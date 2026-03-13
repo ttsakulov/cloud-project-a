@@ -1,7 +1,4 @@
 #!/usr/bin/env python3
-"""
-Скрипт для создания тестового сервера
-"""
 import sys
 import os
 import json
@@ -11,27 +8,24 @@ from app.core.timeweb_servers import TimewebServers
 from app.core.timeweb_presets import TimewebPresets
 
 def main():
-    print("🚀 Создание тестового сервера")
+    print("🚀 Creating test server...")
     print("=" * 50)
     
     servers = TimewebServers()
     presets = TimewebPresets()
     
-    # Находим подходящий тариф
-    print("\n🔍 Поиск минимального тарифа...")
+    print("\n🔍 Searching for the minimum rate...")
     presets_list = presets.list_server_presets()
     
-    # Берем самый дешевый тариф
     cheapest = sorted(presets_list, key=lambda x: x.get('price', 999999))[0]
     
-    print(f"Выбран тариф:")
+    print(f"Selected rate:")
     print(f"  ID: {cheapest.get('id')}")
     print(f"  CPU: {cheapest.get('cpu')} ядер")
     print(f"  RAM: {cheapest.get('ram')} МБ")
     print(f"  Price: {cheapest.get('price')} ₽")
     
-    # Находим Ubuntu 22.04
-    print("\n🔍 Поиск Ubuntu 22.04...")
+    print("\n🔍 Searching Ubuntu 22.04...")
     os_list = presets.list_os()
     ubuntu = None
     for os_item in os_list:
@@ -40,10 +34,10 @@ def main():
             break
     
     if not ubuntu:
-        print("❌ Ubuntu 22.04 не найдена, берем первую ОС")
+        print("❌ Ubuntu 22.04 not found, we take the first OS")
         ubuntu = os_list[0]
     
-    print(f"Выбрана ОС: {ubuntu.get('name')} {ubuntu.get('version')} (ID: {ubuntu.get('id')})")
+    print(f"Selected OS: {ubuntu.get('name')} {ubuntu.get('version')} (ID: {ubuntu.get('id')})")
     
     # Конфигурация сервера
     server_config = {
@@ -55,27 +49,27 @@ def main():
         "bandwidth": 200
     }
     
-    print("\n📝 Конфигурация сервера:")
+    print("\n📝 Server configuration:")
     print(json.dumps(server_config, indent=2, ensure_ascii=False))
     
     # Запрашиваем подтверждение
-    response = input("\nСоздать сервер? (y/n): ")
+    response = input("\nCreate server? (y/n): ")
     if response.lower() != 'y':
-        print("❌ Отменено")
+        print("❌ Cancelled")
         return 0
     
     try:
-        print("\n⏳ Создание сервера...")
+        print("\n⏳ Creating server...")
         server = servers.create_server(server_config)
         
-        print("✅ Сервер создан успешно!")
+        print("✅ Server was created successfully!")
         print(f"ID: {server.get('id')}")
         print(f"Name: {server.get('name')}")
         print(f"Status: {server.get('status')}")
         
         return 0
     except Exception as e:
-        print(f"❌ Ошибка: {e}")
+        print(f"❌ Error: {e}")
         return 1
 
 if __name__ == "__main__":
