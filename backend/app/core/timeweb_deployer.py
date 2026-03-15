@@ -17,7 +17,8 @@ class TimewebDeployer:
     
     def deploy_from_template(self, template_name: str, server_name: str, 
                              project_id: Optional[str] = None, 
-                             custom_params: Optional[Dict] = None) -> Dict[str, Any]:
+                             custom_params: Optional[Dict] = None,
+                             with_public_ip: bool = True) -> Dict[str, Any]:
         """
         Развернуть сервер по шаблону
         
@@ -51,11 +52,10 @@ class TimewebDeployer:
             raise ValueError(f"ОС {os_image} не найдена")
         
         # 5. Формируем конфигурацию сервера
-        config = {
+        config={
             "name": server_name,
-            "comment": template.get("description", ""),
-            "preset_id": preset["id"],
             "os_id": os_item["id"],
+            "preset_id": preset["id"],
             "is_ddos_guard": template.get("is_ddos_guard", False),
             "bandwidth": template.get("bandwidth", 200)
         }
@@ -69,7 +69,12 @@ class TimewebDeployer:
             config.update(custom_params)
         
         # 6. Создаем сервер
-        server = self.servers.create_server(config)
+        server = self.servers.create_server(
+            config, 
+            project_id=project_id or os.getenv("TIMEWEB_PROJECT_ID"),
+            availability_zone=template.get("availability_zone", "msk-1"),
+            with_public_ip=with_public_ip
+        )
         server_id = server["id"]
         
         # 7. Ждем, пока сервер получит IP и будет готов

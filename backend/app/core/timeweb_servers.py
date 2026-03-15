@@ -22,13 +22,37 @@ class TimewebServers:
         response = self.client.get(f"servers/{server_id}")
         return response.get("server", {})
     
-    def create_server(self, config: Dict[str, Any]) -> Dict[str, Any]:
+    def create_server(self, config: Dict[str, Any],
+                      project_id: Optional[int] = None,
+                      availability_zone: str = "msk-1",
+                      with_public_ip: bool = True) -> Dict[str, Any]:
         """
         POST /api/v1/servers
         
         :param config: server configuration according to the instructions
         """
-        response = self.client.post("servers", data=config)
+        
+        server_config = {
+        "name": config.get("name"),
+        "os_id": config.get("os_id"),
+        "preset_id": config.get("preset_id"),
+        "is_ddos_guard": config.get("is_ddos_guard", False),
+        "bandwidth": config.get("bandwidth", 200),
+        "availability_zone": availability_zone,
+        "is_root_password_required": True,  # чтобы получить пароль
+    }
+    
+        # Добавляем project_id если есть
+        if project_id:
+            server_config["project_id"] = project_id
+    
+        # Добавляем публичный IP если нужно
+        if with_public_ip:
+            server_config["network"] = {
+                "floating_ip": "create_ip"
+            }
+        
+        response = self.client.post("servers", data=server_config)
         return response.get("server", {})
     
     def delete_server(self, server_id: int, hash: Optional[str] = None, code: Optional[str] = None) -> bool:
