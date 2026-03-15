@@ -1,0 +1,28 @@
+name: Stack LEMP
+description: Linux + Nginx + MySQL + PHP (PHP-FPM) - for high-load sites
+version: 1.0
+type: web
+main_resources:
+  cpu: 1
+  ram: 1024
+  disk: 10240
+image: ubuntu-22.04
+software:
+  - nginx
+  - mysql-server 
+  - php-fpm
+  - php-mysql
+  - php-curl
+  - php-mbstring
+  - php-xml
+ports:
+  - 80
+  - 22
+ansible_playbook: lemp.yml
+post_deploy_info:
+  web: "http://{{ vm_ip }}"
+  info_page: "http://{{ vm_ip }}/info.php"
+  db_host: "localhost"
+  db_user: "appuser"
+  db_name: "appdb"
+  db_password: "{{ random_password }}"
