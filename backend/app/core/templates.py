@@ -15,7 +15,7 @@ class TemplateManager:
     def list_templates(self) -> List[Dict[str, Any]]:
         templates = []
         
-        for file_path in self.templates_dir.glob("*.yaml"):
+        for file_path in self.templates_dir.glob("*.yml"):
             with open(file_path, 'r', encoding='utf-8') as f:
                 try:
                     template = yaml.safe_load(f)
@@ -27,7 +27,7 @@ class TemplateManager:
         return templates
     
     def get_template(self, name: str) -> Optional[Dict[str, Any]]:
-        file_path = self.templates_dir / f"{name}.yaml"
+        file_path = self.templates_dir / f"{name}.yml"
         
         if not file_path.exists():
             file_path = self.templates_dir / name
