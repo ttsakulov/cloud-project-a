@@ -65,4 +65,8 @@ async def get_server(server_id: int):
     return status
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    #uvicorn.run(app, host="0.0.0.0", port=8080)
+    from app.core.timeweb_deployer import TimewebDeployer
+    deployer = TimewebDeployer()
+    result = deployer.deploy_from_template("lemp", "test-direct")
+    print(result)
