@@ -1,6 +1,8 @@
+import os
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import Dict, Any
+from datetime import datetime
 import json
 
 from app.core.database import get_db
@@ -45,6 +47,8 @@ async def create_server(
     try:
         tf_config = {
             "server_name": server_data.name,
+            "token": os.getenv("YC_TOKEN"),
+            "folder_id": os.getenv("YC_FOLDER_ID"),
             "subnet_id": os.getenv("YC_SUBNET_ID"),
             "ssh_public_key": ssh_public_key,
             "cores": server_data.cores,
@@ -90,15 +94,28 @@ def get_server(server_id: int, db: Session = Depends(get_db)):
 @router.delete("/{server_id}")
 def delete_server(server_id: int, db: Session = Depends(get_db)):
     """Удаляет сервер"""
+    from fastapi.responses import JSONResponse
+    
     server = db.query(Server).filter(Server.id == server_id).first()
     if not server:
         raise HTTPException(status_code=404, detail="Server not found")
     
-    # Вызываем Terraform destroy
-    tf_service.destroy_server(server.name)
-    
-    server.status = "deleted"
-    server.deleted_at = datetime.utcnow()
-    db.commit()
-    
-    return {"message": "Server deleted"}
+    try:
+        # Вызываем Terraform destroy
+        result = tf_service.destroy_server(server.name)
+        
+        if result:
+            server.status = "deleted"
+            server.deleted_at = datetime.utcnow()
+            db.commit()
+            return {"message": "Server deleted successfully"}
+        else:
+            return JSONResponse(
+                status_code=500,
+                content={"detail": f"State file not found for server {server.name}"}
+            )
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"detail": f"Failed to delete server: {str(e)}"}
+        )

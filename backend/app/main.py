@@ -2,6 +2,9 @@ from fastapi import FastAPI
 from app.api import servers
 from app.core.database import engine, Base
 
+from dotenv import load_dotenv
+load_dotenv() 
+
 # Создаем таблицы в БД
 Base.metadata.create_all(bind=engine)
 

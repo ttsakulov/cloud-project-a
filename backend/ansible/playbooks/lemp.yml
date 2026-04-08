@@ -1,69 +1,141 @@
 ---
-- name: Install LEMP stack
+- name: Install And Setup LEMP Stack
   hosts: all
-  become: true # My VS code swears at "yes"
+  become: yes
   vars:
-    db_password: "{{ lookup('password', '/dev/null chars=ascii_letters,digits length=12') }}"
     php_version: "8.1"
+    db_name: "appdb"
+    db_user: "appuser"
+    db_password: "{{ lookup('password', '/dev/null chars=ascii_letters,digits length=16') }}"
+    mysql_root_password: "{{ lookup('password', '/dev/null chars=ascii_letters,digits length=20') }}"
+  
   tasks:
+    # 1. Update apt cache
     - name: Update apt cache
       apt:
         update_cache: yes
         cache_valid_time: 3600
     
+    # 2. Install Nginx
     - name: Install Nginx
       apt:
         name: nginx
         state: present
 
-    - name: Start Nginx
+    # 3. Install MySQL
+    - name: Install MySQL server
+      apt:
+        name: mysql-server
+        state: present
+
+    # 4. Install PHP and PHP-FPM
+    - name: Install PHP and PHP-FPM
+      apt:
+        name:
+          - "php{{ php_version }}"
+          - "php{{ php_version }}-fpm"
+          - "php{{ php_version }}-mysql"
+          - "php{{ php_version }}-curl"
+          - "php{{ php_version }}-mbstring"
+          - "php{{ php_version }}-xml"
+        state: present
+
+    # 5. Setup MySQL root password
+    - name: Set MySQL root password
+      mysql_user:
+        name: root
+        password: "{{ mysql_root_password }}"
+        host: localhost
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+        check_implicit_admin: yes
+      changed_when: false
+
+    # 6. Create app DB and user
+    - name: Create application database
+      mysql_db:
+        name: "{{ db_name }}"
+        state: present
+        login_password: "{{ mysql_root_password }}"
+        login_user: root
+
+    - name: Create application database user
+      mysql_user:
+        name: "{{ db_user }}"
+        password: "{{ db_password }}"
+        priv: "{{ db_name }}.*:ALL"
+        host: localhost
+        state: present
+        login_password: "{{ mysql_root_password }}"
+        login_user: root
+
+    # 7. Configure Nginx for work with PHP-FPM
+    - name: Configure Nginx site for LEMP
+      template:
+        src: lemp-site.conf.j2
+        dest: /etc/nginx/sites-available/default
+      notify: restart nginx
+
+    # 8. Configure PHP-FPM
+    - name: Configure PHP-FPM
+      template:
+        src: php-fpm.ini.j2
+        dest: "/etc/php/{{ php_version }}/fpm/php.ini"
+      notify: restart php-fpm
+
+    # 9. Create test php file
+    - name: Create info.php
+      copy:
+        content: |
+          <?php
+          phpinfo();
+          ?>
+        dest: /var/www/html/info.php
+        mode: '0644'
+
+    # 10. Start and enable services
+    - name: Start and enable Nginx
       systemd:
         name: nginx
         state: started
         enabled: yes
 
-    - name: Install MySQL and PHP
-      apt:
-        name:
-          - mysql-server
-          - php{{ php_version }}-fpm
-          - php{{ php_version }}-mysql
-          - php{{ php_version }}-curl
-          - php{{ php_version }}-mbstring
-          - php{{ php_version }}-xml
-          - python3-pymysql
-        state: present
+    - name: Start and enable PHP-FPM
+      systemd:
+      name: "php{{ php_version }}-fpm"
+      state: started
+      enabled: yes
 
-    - name: Start MySQL
+    - name: Start and enable MySQL
       systemd:
         name: mysql
         state: started
         enabled: yes
 
-    - name: Create application database
-      mysql_db:
-        name: appdb
-        state: present
-        login_unix_socket: /var/run/mysqld/mysqld.sock
+  handlers:
+    - name: restart nginx
+      systemd:
+        name: nginx
+        state: restarted
 
-    - name: Create application user
-      mysql_user:
-        name: appuser
-        password: "{{ db_password }}"
-        priv: 'appdb.*:ALL'
-        host: localhost
-        state: present
-        login_unix_socket: /var/run/mysqld/mysqld.sock
-      no_log: true
+    - name: restart php-fpm
+      systemd:
+        name: "php{{ php_version }}-fpm"
+        state: restarted
 
-    - name: Configure PHP-FPM to use socket
-      lineinfile:
-        path: /etc/php/8.1/fpm/pool.d/www.conf
-        regexp: '^listen ='
-        line: 'listen = /run/php/php8.1-fpm.sock'
-
-    - name: Create test PHP file
+  # Save credentials in file for sending back to application
+  post_tasks:
+    - name: Save credentials to file
       copy:
-        content: "<?php phpinfo(); ?>"
-        dest: /var/www/html/info.php
+        content: |
+          {
+            "mysql_root_password": {{ mysql_root_password }},
+            "database_name": "{{ db_name }}",
+            "database_user": "{{ db_user }}",
+            "database_password": "{{ db_password }}",
+            "website_url": "http://{{ ansible_default_ipv4.address }}",
+            "info_url": "http://{{ ansible_default_ipv4.address }}/info.php",
+            "ssh_user": "ubuntu",
+            "ssh_ip": "ansible_default_ipv4.address"
+          }
+        dest: "/tmp/ansible_credentials.json"
         mode: '0644'

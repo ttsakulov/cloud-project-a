@@ -8,6 +8,8 @@ terraform {
 
 provider "yandex" {
     zone = var.zone
+    folder_id = var.folder_id
+    token = var.token
 }
 
 data "yandex_vpc_subnet" "existing" {
@@ -42,7 +44,7 @@ resource "yandex_compute_instance" "vm" {
         nat       = true                                # turn on public IP
     }
 
-    metadate {
+    metadata = {
         ssh-keys = "ubuntu:${var.ssh_public_key}"
     }
 }

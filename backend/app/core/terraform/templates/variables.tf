@@ -7,6 +7,15 @@ variable "zone" {
   default = "ru-central1-d"
 }
 
+variable "folder_id" {
+  type = string
+}
+
+variable "token" {
+  type = string
+  sensitive = true
+}
+
 variable "subnet_id" {
   type = string
 }
