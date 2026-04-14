@@ -3,7 +3,7 @@ from typing import Optional, Dict, Any
 from datetime import datetime
 
 class ServerCreate(BaseModel):
-    name: str
+    name: Optional[str] = None  # теперь необязательное
     template: str
     cores: Optional[int] = 2
     memory: Optional[int] = 4

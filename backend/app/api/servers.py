@@ -1,6 +1,7 @@
 import os
 from datetime import datetime
 import json
+import time
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 
@@ -12,6 +13,12 @@ from app.core.ansible_runner import run_ansible
 
 router = APIRouter(prefix="/api/servers", tags=["servers"])
 tf_service = TerraformService()
+
+
+def generate_unique_name() -> str:
+    """Генерирует уникальное имя сервера"""
+    timestamp = int(time.time())
+    return f"srv-{timestamp}"
 
 
 def get_ssh_public_key() -> str:
@@ -37,14 +44,19 @@ async def create_server(
 ):
     """Создает новый сервер с выбранным стеком"""
     
-    # Проверяем уникальность имени
-    existing = db.query(Server).filter(Server.name == server_data.name).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Server with this name already exists")
+    # Генерируем имя, если не указано, или проверяем уникальность
+    if server_data.name:
+        existing = db.query(Server).filter(Server.name == server_data.name).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Server with this name already exists")
+        server_name = server_data.name
+    else:
+        # Автоматически генерируем уникальное имя
+        server_name = generate_unique_name()
     
     # Создаем запись в БД
     db_server = Server(
-        name=server_data.name,
+        name=server_name,
         template=server_data.template,
         status="creating"
     )
@@ -55,7 +67,7 @@ async def create_server(
     try:
         # Получаем переменные окружения
         tf_config = {
-            "server_name": server_data.name,
+            "server_name": server_name,  # используем сгенерированное имя
             "token": get_env_var("YC_TOKEN"),
             "folder_id": get_env_var("YC_FOLDER_ID"),
             "subnet_id": get_env_var("YC_SUBNET_ID"),
@@ -128,7 +140,7 @@ def delete_server(server_id: int, db: Session = Depends(get_db)):
         "zone": "ru-central1-d",
         "os_family": "ubuntu-2204-lts",
         "core_fraction": 50,
-        "ssh_public_key": "dummy"  # Значение не важно для destroy
+        "ssh_public_key": "dummy"
     }
     
     # Пытаемся удалить ВМ через Terraform
@@ -140,12 +152,12 @@ def delete_server(server_id: int, db: Session = Depends(get_db)):
         db.commit()
         return {"message": f"Server {server.name} deleted successfully"}
     else:
-        # Если не успешно — всё равно помечаем как deleted, но сообщаем
         server.status = "deleted"
         server.deleted_at = datetime.utcnow()
         db.commit()
         return {"message": f"Server {server.name} marked as deleted (destroy may have failed)"}
-        
+
+
 @router.delete("/by-name/{server_name}")
 def delete_server_by_name(server_name: str, db: Session = Depends(get_db)):
     """Удаляет сервер по имени"""
@@ -153,7 +165,21 @@ def delete_server_by_name(server_name: str, db: Session = Depends(get_db)):
     if not server:
         raise HTTPException(status_code=404, detail="Server not found")
     
-    success = tf_service.destroy_server(server.name)
+    config = {
+        "token": os.getenv("YC_TOKEN"),
+        "folder_id": os.getenv("YC_FOLDER_ID"),
+        "subnet_id": os.getenv("YC_SUBNET_ID"),
+        "server_name": server.name,
+        "cores": 2,
+        "memory": 4,
+        "disk_size": 20,
+        "zone": "ru-central1-d",
+        "os_family": "ubuntu-2204-lts",
+        "core_fraction": 50,
+        "ssh_public_key": "dummy"
+    }
+    
+    success = tf_service.destroy_server(server.name, config)
     
     server.status = "deleted"
     server.deleted_at = datetime.utcnow()
