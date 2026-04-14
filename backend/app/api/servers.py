@@ -1,20 +1,33 @@
 import os
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
-from sqlalchemy.orm import Session
-from typing import Dict, Any
 from datetime import datetime
 import json
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.models.server import Server
 from app.schemas.server import ServerCreate, ServerResponse
 from app.core.terraform.service import TerraformService
-from app.core.ansible_runner import run_ansible  # создадим позже
+from app.core.ansible_runner import run_ansible
 
 router = APIRouter(prefix="/api/servers", tags=["servers"])
-
-# Инициализируем Terraform сервис
 tf_service = TerraformService()
+
+
+def get_ssh_public_key() -> str:
+    """Читает публичный SSH ключ"""
+    ssh_key_path = os.path.expanduser("~/.ssh/yandex_cloud.pub")
+    with open(ssh_key_path, 'r') as f:
+        return f.read().strip()
+
+
+def get_env_var(name: str) -> str:
+    """Получает переменную окружения"""
+    value = os.getenv(name)
+    if not value:
+        raise HTTPException(status_code=500, detail=f"{name} not set in environment")
+    return value
+
 
 @router.post("/", response_model=ServerResponse)
 async def create_server(
@@ -24,12 +37,12 @@ async def create_server(
 ):
     """Создает новый сервер с выбранным стеком"""
     
-    # Проверяем, не существует ли уже сервер с таким именем
+    # Проверяем уникальность имени
     existing = db.query(Server).filter(Server.name == server_data.name).first()
     if existing:
         raise HTTPException(status_code=400, detail="Server with this name already exists")
     
-    # 1. Создаем запись в БД
+    # Создаем запись в БД
     db_server = Server(
         name=server_data.name,
         template=server_data.template,
@@ -39,23 +52,20 @@ async def create_server(
     db.commit()
     db.refresh(db_server)
     
-    # 2. Читаем публичный SSH ключ
-    with open("/home/ttsakulov/.ssh/yandex_cloud.pub", 'r') as f:
-        ssh_public_key = f.read().strip()
-    
-    # 3. Создаем ВМ через Terraform
     try:
+        # Получаем переменные окружения
         tf_config = {
             "server_name": server_data.name,
-            "token": os.getenv("YC_TOKEN"),
-            "folder_id": os.getenv("YC_FOLDER_ID"),
-            "subnet_id": os.getenv("YC_SUBNET_ID"),
-            "ssh_public_key": ssh_public_key,
+            "token": get_env_var("YC_TOKEN"),
+            "folder_id": get_env_var("YC_FOLDER_ID"),
+            "subnet_id": get_env_var("YC_SUBNET_ID"),
+            "ssh_public_key": get_ssh_public_key(),
             "cores": server_data.cores,
             "memory": server_data.memory,
             "disk_size": server_data.disk_size
         }
         
+        # Создаем ВМ через Terraform
         result = tf_service.create_server(tf_config)
         
         # Обновляем запись в БД
@@ -63,20 +73,28 @@ async def create_server(
         db_server.status = "provisioning"
         db.commit()
         
+        # Запускаем Ansible в фоне
+        background_tasks.add_task(
+            run_ansible,
+            server_id=db_server.id,
+            public_ip=result["public_ip"],
+            template=server_data.template
+        )
+        
+        return db_server
+        
     except Exception as e:
         db_server.status = "error"
         db.commit()
         raise HTTPException(status_code=500, detail=f"Failed to create VM: {str(e)}")
-    
-    # 4. Запускаем Ansible в фоне (через BackgroundTasks)
-    background_tasks.add_task(
-        run_ansible,
-        server_id=db_server.id,
-        public_ip=result["public_ip"],
-        template=server_data.template
-    )
-    
-    return db_server
+
+
+@router.get("/", response_model=list[ServerResponse])
+def list_servers(db: Session = Depends(get_db)):
+    """Получает список всех серверов (кроме удалённых)"""
+    servers = db.query(Server).filter(Server.status != "deleted").all()
+    return servers
+
 
 @router.get("/{server_id}", response_model=ServerResponse)
 def get_server(server_id: int, db: Session = Depends(get_db)):
@@ -85,37 +103,63 @@ def get_server(server_id: int, db: Session = Depends(get_db)):
     if not server:
         raise HTTPException(status_code=404, detail="Server not found")
     
-    # Преобразуем credentials из JSON строки в словарь
-    if server.credentials:
+    if server.credentials and isinstance(server.credentials, str):
         server.credentials = json.loads(server.credentials)
     
     return server
 
+
 @router.delete("/{server_id}")
 def delete_server(server_id: int, db: Session = Depends(get_db)):
-    """Удаляет сервер"""
-    from fastapi.responses import JSONResponse
-    
+    """Удаляет сервер по ID"""
     server = db.query(Server).filter(Server.id == server_id).first()
     if not server:
         raise HTTPException(status_code=404, detail="Server not found")
     
-    try:
-        # Вызываем Terraform destroy
-        result = tf_service.destroy_server(server.name)
+    # Собираем конфиг для destroy
+    config = {
+        "token": os.getenv("YC_TOKEN"),
+        "folder_id": os.getenv("YC_FOLDER_ID"),
+        "subnet_id": os.getenv("YC_SUBNET_ID"),
+        "server_name": server.name,
+        "cores": 2,
+        "memory": 4,
+        "disk_size": 20,
+        "zone": "ru-central1-d",
+        "os_family": "ubuntu-2204-lts",
+        "core_fraction": 50,
+        "ssh_public_key": "dummy"  # Значение не важно для destroy
+    }
+    
+    # Пытаемся удалить ВМ через Terraform
+    success = tf_service.destroy_server(server.name, config)
+    
+    if success:
+        server.status = "deleted"
+        server.deleted_at = datetime.utcnow()
+        db.commit()
+        return {"message": f"Server {server.name} deleted successfully"}
+    else:
+        # Если не успешно — всё равно помечаем как deleted, но сообщаем
+        server.status = "deleted"
+        server.deleted_at = datetime.utcnow()
+        db.commit()
+        return {"message": f"Server {server.name} marked as deleted (destroy may have failed)"}
         
-        if result:
-            server.status = "deleted"
-            server.deleted_at = datetime.utcnow()
-            db.commit()
-            return {"message": "Server deleted successfully"}
-        else:
-            return JSONResponse(
-                status_code=500,
-                content={"detail": f"State file not found for server {server.name}"}
-            )
-    except Exception as e:
-        return JSONResponse(
-            status_code=500,
-            content={"detail": f"Failed to delete server: {str(e)}"}
-        )
+@router.delete("/by-name/{server_name}")
+def delete_server_by_name(server_name: str, db: Session = Depends(get_db)):
+    """Удаляет сервер по имени"""
+    server = db.query(Server).filter(Server.name == server_name).first()
+    if not server:
+        raise HTTPException(status_code=404, detail="Server not found")
+    
+    success = tf_service.destroy_server(server.name)
+    
+    server.status = "deleted"
+    server.deleted_at = datetime.utcnow()
+    db.commit()
+    
+    if success:
+        return {"message": f"Server {server_name} deleted successfully"}
+    else:
+        return {"message": f"Server {server_name} marked as deleted (state file not found)"}
