@@ -87,10 +87,11 @@ async def create_server(
         
         # Запускаем Ansible в фоне
         background_tasks.add_task(
-            run_ansible,
+            run_ansible_and_update,
             server_id=db_server.id,
             public_ip=result["public_ip"],
-            template=server_data.template
+            template=server_data.template,
+            db=db  # передаем сессию
         )
         
         return db_server
@@ -99,7 +100,6 @@ async def create_server(
         db_server.status = "error"
         db.commit()
         raise HTTPException(status_code=500, detail=f"Failed to create VM: {str(e)}")
-
 
 @router.get("/", response_model=list[ServerResponse])
 def list_servers(db: Session = Depends(get_db)):
@@ -120,6 +120,27 @@ def get_server(server_id: int, db: Session = Depends(get_db)):
     
     return server
 
+def run_ansible_and_update(server_id: int, public_ip: str, template: str, db: Session):
+    """Запускает Ansible и обновляет БД с результатом"""
+    from app.core.ansible_runner import run_ansible
+    from app.core.database import SessionLocal
+    
+    result = run_ansible(server_id, public_ip, template)
+    
+    # Создаем новую сессию, так как фоновая задача не может использовать переданную
+    new_db = SessionLocal()
+    try:
+        server = new_db.query(Server).filter(Server.id == server_id).first()
+        if server:
+            if result["success"]:
+                server.status = "running"
+                server.credentials = result.get("credentials", {})
+            else:
+                server.status = "error"
+                server.error_message = result.get("error", "Unknown error")
+            new_db.commit()
+    finally:
+        new_db.close()
 
 @router.delete("/{server_id}")
 def delete_server(server_id: int, db: Session = Depends(get_db)):

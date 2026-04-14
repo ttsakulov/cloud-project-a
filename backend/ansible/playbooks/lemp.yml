@@ -40,6 +40,12 @@
           - "php{{ php_version }}-xml"
         state: present
 
+    # 4.5 Install PyMySQL for MySQL module (нужно для работы mysql_user/mysql_db)
+    - name: Install PyMySQL
+      apt:
+        name: python3-pymysql
+        state: present
+
     # 5. Setup MySQL root password
     - name: Set MySQL root password
       mysql_user:
@@ -101,9 +107,9 @@
 
     - name: Start and enable PHP-FPM
       systemd:
-      name: "php{{ php_version }}-fpm"
-      state: started
-      enabled: yes
+        name: "php{{ php_version }}-fpm"
+        state: started
+        enabled: yes
 
     - name: Start and enable MySQL
       systemd:
@@ -128,14 +134,14 @@
       copy:
         content: |
           {
-            "mysql_root_password": {{ mysql_root_password }},
+            "mysql_root_password": "{{ mysql_root_password }}",
             "database_name": "{{ db_name }}",
             "database_user": "{{ db_user }}",
             "database_password": "{{ db_password }}",
             "website_url": "http://{{ ansible_default_ipv4.address }}",
             "info_url": "http://{{ ansible_default_ipv4.address }}/info.php",
             "ssh_user": "ubuntu",
-            "ssh_ip": "ansible_default_ipv4.address"
+            "ssh_ip": "{{ ansible_default_ipv4.address }}"
           }
         dest: "/tmp/ansible_credentials.json"
         mode: '0644'
