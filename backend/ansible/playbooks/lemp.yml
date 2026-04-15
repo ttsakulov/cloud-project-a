@@ -40,41 +40,36 @@
           - "php{{ php_version }}-xml"
         state: present
 
-    # 4.5 Install PyMySQL for MySQL module (нужно для работы mysql_user/mysql_db)
-    - name: Install PyMySQL
+    # MySQL setup
+    - name: Install pip for Python 3
       apt:
-        name: python3-pymysql
+        name: python3-pip
         state: present
 
-    # 5. Setup MySQL root password
-    - name: Set MySQL root password
-      mysql_user:
-        name: root
-        password: "{{ mysql_root_password }}"
-        host: localhost
-        login_unix_socket: /var/run/mysqld/mysqld.sock
-        check_implicit_admin: yes
-      changed_when: false
-
-    # 6. Create app DB and user
-    - name: Create application database
-      mysql_db:
-        name: "{{ db_name }}"
+    - name: Install PyMySQL
+      pip:
+        name: pymysql
         state: present
-        login_password: "{{ mysql_root_password }}"
-        login_user: root
 
-    - name: Create application database user
-      mysql_user:
-        name: "{{ db_user }}"
-        password: "{{ db_password }}"
-        priv: "{{ db_name }}.*:ALL"
-        host: localhost
-        state: present
-        login_password: "{{ mysql_root_password }}"
-        login_user: root
+    - name: Create application database and user
+      shell: |
+        mysql -e "CREATE DATABASE IF NOT EXISTS {{ db_name }};"
+        mysql -e "CREATE USER IF NOT EXISTS '{{ db_user }}'@'localhost' IDENTIFIED BY '{{ db_password }}';"
+        mysql -e "GRANT ALL PRIVILEGES ON {{ db_name }}.* TO '{{ db_user }}'@'localhost';"
+        mysql -e "FLUSH PRIVILEGES;"
+      become: yes
 
-    # 7. Configure Nginx for work with PHP-FPM
+    - name: Remove anonymous users
+      shell: |
+        mysql -e "DELETE FROM mysql.user WHERE User='';"
+        mysql -e "FLUSH PRIVILEGES;"
+      become: yes
+
+    - name: Remove test database
+      shell: |
+        mysql -e "DROP DATABASE IF EXISTS test;"
+      become: yes    
+      
     - name: Configure Nginx site for LEMP
       template:
         src: lemp-site.conf.j2

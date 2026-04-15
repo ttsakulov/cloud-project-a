@@ -35,7 +35,7 @@ def run_ansible(server_id: int, public_ip: str, template: str) -> Dict[str, Any]
     
     print(f"[ANSIBLE] Starting for server {server_id} at {public_ip} with template {template}")
     
-    private_key_path = os.path.expanduser("~/.ssh/id_rsa")
+    private_key_path = os.path.expanduser("~/.ssh/yandex_cloud")
     
     # Проверяем, существует ли ключ
     if not os.path.exists(private_key_path):
