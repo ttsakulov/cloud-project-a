@@ -1,0 +1,83 @@
+---
+- name: Install Docker and Portainer
+  hosts: all
+  become: yes
+  vars:
+    portainer_port: 9000
+
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install prerequisites
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - software-properties-common
+          - gnupg
+        state: present
+
+    - name: Add Docker GPG key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Add Docker repository
+      apt_repository:
+        repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu jammy stable
+        state: present
+
+    - name: Install Docker
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-compose-plugin
+        state: present
+
+    - name: Start and enable Docker
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Add ubuntu user to docker group
+      user:
+        name: ubuntu
+        groups: docker
+        append: yes
+
+    - name: Create volume for Portainer
+      docker_volume:
+        name: portainer_data
+        state: present
+
+    - name: Run Portainer container
+      docker_container:
+        name: portainer
+        image: portainer/portainer-ce:latest
+        restart_policy: always
+        ports:
+          - "{{ portainer_port }}:9000"
+        volumes:
+          - /var/run/docker.sock:/var/run/docker.sock
+          - portainer_data:/data
+        state: started
+
+    - name: Create info file
+      copy:
+        content: |
+          =========================================
+          Docker + Portainer installed!
+          =========================================
+          Portainer URL: http://{{ ansible_default_ipv4.address }}:{{ portainer_port }}
+          
+          First login: create admin user (first visit)
+          =========================================
+        dest: /home/ubuntu/info.txt
+        mode: '0644'
