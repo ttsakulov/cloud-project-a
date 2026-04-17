@@ -1,0 +1,7 @@
+name: LEMP Stack
+description: Nginx + MySQL + PHP-FPM для веб-проектов
+playbook: lemp.yml
+preset_id: 2-4-50
+os_id: ubuntu-2204-lts
+is_ddos_guard: false
+bandwith: 200

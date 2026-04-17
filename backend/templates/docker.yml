@@ -1,0 +1,7 @@
+name: Docker + Portainer
+description: Docker CE, Docker Compose и веб-интерфейс Portainer
+playbook: docker.yml
+preset_id: 2-4-50
+os_id: ubuntu-2204-lts
+is_ddos_guard: false
+bandwith: 200

@@ -10,16 +10,16 @@ from app.models.server import Server
 from app.schemas.server import ServerCreate, ServerResponse
 from app.core.terraform.service import TerraformService
 from app.core.ansible_runner import run_ansible
+from app.core.templates import TemplateManager
 
+template_manager = TemplateManager()
 router = APIRouter(prefix="/api/servers", tags=["servers"])
 tf_service = TerraformService()
-
 
 def generate_unique_name() -> str:
     """Генерирует уникальное имя сервера"""
     timestamp = int(time.time())
     return f"srv-{timestamp}"
-
 
 def get_ssh_public_key() -> str:
     """Читает публичный SSH ключ"""
@@ -107,6 +107,16 @@ def list_servers(db: Session = Depends(get_db)):
     servers = db.query(Server).filter(Server.status != "deleted").all()
     return servers
 
+@router.get("/templates")
+def list_templates():
+    return template_manager.list_templates()
+
+@router.get("/templates/{name}")
+def get_template(name: str):
+    template = template_manager.get_template(name)
+    if not template:
+        raise HTTPException(404, "Template not found")
+    return template
 
 @router.get("/{server_id}", response_model=ServerResponse)
 def get_server(server_id: int, db: Session = Depends(get_db)):
