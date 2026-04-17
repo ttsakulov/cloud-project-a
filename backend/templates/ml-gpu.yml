@@ -1,0 +1,12 @@
+name: ML Stack (GPU ready)
+description: Jupyter Lab, PyTorch, TensorFlow, Scikit-learn, GPU support
+playbook: ml-gpu.yml
+preset_id: 4-8-75
+os_id: ubuntu-2204-lts
+is_ddos_guard: false
+bandwidth: 300
+credentials:
+  - jupyter_url
+  - jupyter_password
+  - gpu_available
+  - ssh_command

@@ -2,8 +2,15 @@ import subprocess
 import tempfile
 import os
 import time
+import secrets
+import string
 from pathlib import Path
 from typing import Dict, Any
+
+def generate_password(length: int = 16) -> str:
+    """Генерирует случайный пароль"""
+    alphabet = string.ascii_letters + string.digits
+    return ''.join(secrets.choice(alphabet) for _ in range(length))
 
 def wait_for_ssh(public_ip: str, private_key_path: str, timeout: int = 180) -> bool:
     """Ожидает, пока SSH станет доступен на сервере"""
@@ -75,7 +82,7 @@ def run_ansible(server_id: int, public_ip: str, template: str) -> Dict[str, Any]
             ],
             capture_output=True,
             text=True,
-            timeout=600
+            timeout=1800
         )
         
         print(f"[ANSIBLE] Return code: {result.returncode}")
@@ -85,14 +92,39 @@ def run_ansible(server_id: int, public_ip: str, template: str) -> Dict[str, Any]
             print(f"[ANSIBLE] STDERR: {result.stderr}")
             return {"success": False, "error": result.stderr}
         
-        # Пытаемся прочитать credentials
-        credentials = {
-            "status": "deployed",
-            "ssh_command": f"ssh -i {private_key_path} ubuntu@{public_ip}",
-            "public_ip": public_ip,
-            "template": template,
-            "server_id": server_id
-        }
+        # Генерируем credentials в зависимости от шаблона
+        if template == "lemp":
+            credentials = {
+                "mysql_root_password": generate_password(16),
+                "mysql_database": "appdb",
+                "mysql_user": "appuser",
+                "mysql_password": generate_password(12),
+                "website_url": f"http://{public_ip}",
+                "info_url": f"http://{public_ip}/info.php",
+                "ssh_command": f"ssh -i {private_key_path} ubuntu@{public_ip}",
+                "public_ip": public_ip
+            }
+        elif template == "docker":
+            credentials = {
+                "portainer_url": f"http://{public_ip}:9000",
+                "docker_version": "Docker CE + Compose Plugin",
+                "ssh_command": f"ssh -i {private_key_path} ubuntu@{public_ip}",
+                "public_ip": public_ip,
+                "note": "Portainer: при первом входе создайте admin пользователя"
+            }
+        elif template == "ml-gpu":
+            credentials = {
+                "jupyter_url": f"http://{public_ip}:8888",
+                "jupyter_password": generate_password(12),
+                "ssh_command": f"ssh -i {private_key_path} ubuntu@{public_ip}",
+                "public_ip": public_ip,
+                "note": "Пароль для Jupyter Lab указан выше"
+            }
+        else:
+            credentials = {
+                "ssh_command": f"ssh -i {private_key_path} ubuntu@{public_ip}",
+                "public_ip": public_ip
+            }
         
         return {"success": True, "credentials": credentials}
         

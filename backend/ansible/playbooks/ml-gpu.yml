@@ -1,0 +1,216 @@
+---
+- name: Install ML Stack (PyTorch, TensorFlow, Jupyter Lab)
+  hosts: all
+  become: yes
+  vars:
+    jupyter_port: 8888
+    conda_installer: "Miniconda3-latest-Linux-x86_64.sh"
+    conda_path: "/home/ubuntu/miniconda3"
+
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install system dependencies
+      apt:
+        name:
+          - python3-pip
+          - python3-dev
+          - build-essential
+          - curl
+          - git
+          - wget
+          - htop
+        state: present
+
+    - name: Download Miniconda
+      get_url:
+        url: "https://repo.anaconda.com/miniconda/{{ conda_installer }}"
+        dest: "/tmp/{{ conda_installer }}"
+        mode: '0755'
+
+    - name: Install Miniconda
+      shell: |
+        /tmp/{{ conda_installer }} -b -u -p {{ conda_path }}
+      args:
+        creates: "{{ conda_path }}/bin/conda"
+
+    - name: Add conda to PATH
+      copy:
+        content: |
+          export PATH="{{ conda_path }}/bin:$PATH"
+        dest: /etc/profile.d/conda.sh
+        mode: '0644'
+
+    - name: Accept Conda Terms of Service
+      shell: |
+        {{ conda_path }}/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
+        {{ conda_path }}/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
+      become_user: ubuntu
+      ignore_errors: yes
+
+    - name: Create conda environment
+      shell: |
+        {{ conda_path }}/bin/conda create -n ml python=3.10 -y
+      become_user: ubuntu
+
+    - name: Install PyTorch (CPU version)
+      shell: |
+        {{ conda_path }}/bin/conda run -n ml pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+      become_user: ubuntu
+
+    - name: Install TensorFlow
+      shell: |
+        {{ conda_path }}/bin/conda run -n ml pip install tensorflow
+      become_user: ubuntu
+
+    - name: Install ML packages
+      shell: |
+        {{ conda_path }}/bin/conda run -n ml pip install \
+          jupyterlab \
+          numpy \
+          pandas \
+          scikit-learn \
+          matplotlib \
+          seaborn \
+          plotly \
+          ipywidgets \
+          tqdm \
+          pillow
+      become_user: ubuntu
+
+    - name: Create notebooks directory
+      file:
+        path: /home/ubuntu/notebooks
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+
+    - name: Generate Jupyter config
+      shell: |
+        {{ conda_path }}/bin/conda run -n ml jupyter lab --generate-config
+      become_user: ubuntu
+      ignore_errors: yes
+
+    - name: Configure Jupyter Lab (no password)
+      copy:
+        content: |
+          c.ServerApp.ip = '0.0.0.0'
+          c.ServerApp.port = {{ jupyter_port }}
+          c.ServerApp.open_browser = False
+          c.ServerApp.allow_origin = '*'
+          c.ServerApp.root_dir = '/home/ubuntu/notebooks'
+          c.ServerApp.token = ''
+          c.ServerApp.password = ''
+        dest: /home/ubuntu/.jupyter/jupyter_lab_config.py
+      become_user: ubuntu
+
+    - name: Create systemd service for Jupyter
+      copy:
+        content: |
+          [Unit]
+          Description=Jupyter Lab
+          After=network.target
+
+          [Service]
+          User=ubuntu
+          Group=ubuntu
+          WorkingDirectory=/home/ubuntu
+          Environment="PATH=/home/ubuntu/.conda/envs/ml/bin:/home/ubuntu/miniconda3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+          ExecStart=/home/ubuntu/.conda/envs/ml/bin/jupyter lab --ip=0.0.0.0 --port={{ jupyter_port }} --no-browser --config=/home/ubuntu/.jupyter/jupyter_lab_config.py
+          Restart=always
+          RestartSec=10
+
+          [Install]
+          WantedBy=multi-user.target
+        dest: /etc/systemd/system/jupyter.service
+        mode: '0644'
+
+    - name: Start and enable Jupyter
+      systemd:
+        name: jupyter
+        state: started
+        enabled: yes
+
+    - name: Create welcome notebook
+      copy:
+        content: |
+          {
+           "cells": [
+            {
+             "cell_type": "markdown",
+             "metadata": {},
+             "source": [
+              "# Welcome to ML Stack!",
+              "",
+              "Check installed packages"
+             ]
+            },
+            {
+             "cell_type": "code",
+             "metadata": {},
+             "source": [
+              "import torch\n",
+              "import tensorflow as tf\n",
+              "import numpy as np\n",
+              "import pandas as pd\n",
+              "\n",
+              "print(f'PyTorch version: {torch.__version__}')\n",
+              "print(f'TensorFlow version: {tf.__version__}')\n",
+              "print(f'NumPy version: {np.__version__}')\n",
+              "print(f'Pandas version: {pd.__version__}')"
+             ],
+             "outputs": []
+            },
+            {
+             "cell_type": "code",
+             "metadata": {},
+             "source": [
+              "import matplotlib.pyplot as plt\n",
+              "import seaborn as sns\n",
+              "\n",
+              "plt.plot([1, 2, 3, 4])\n",
+              "plt.title('Test Plot')\n",
+              "plt.show()"
+             ],
+             "outputs": []
+            }
+           ],
+           "metadata": {
+            "kernelspec": {
+             "display_name": "Python 3 (ml)",
+             "language": "python",
+             "name": "python3"
+            }
+           },
+           "nbformat": 4,
+           "nbformat_minor": 4
+          }
+        dest: /home/ubuntu/notebooks/welcome.ipynb
+        owner: ubuntu
+        group: ubuntu
+        mode: '0644'
+
+    - name: Create info file
+      copy:
+        content: |
+          =========================================
+          ML Stack installed successfully!
+          =========================================
+          Jupyter Lab URL: http://{{ ansible_default_ipv4.address }}:{{ jupyter_port }}
+          No password required
+          
+          SSH: ssh -i ~/.ssh/yandex_cloud ubuntu@{{ ansible_default_ipv4.address }}
+          =========================================
+        dest: /home/ubuntu/info.txt
+        mode: '0644'
+
+    - name: Open firewall port
+      ufw:
+        rule: allow
+        port: "{{ jupyter_port }}"
+        proto: tcp
+      ignore_errors: yes
