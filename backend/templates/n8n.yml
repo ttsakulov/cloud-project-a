@@ -1,0 +1,10 @@
+name: n8n Automation Server
+description: Платформа автоматизации workflow с открытым исходным кодом (HTTP версия)
+playbook: n8n.yml
+preset_id: 2-4-50
+os_id: ubuntu-2204-lts
+is_ddos_guard: false
+bandwidth: 200
+credentials:
+  - n8n_url
+  - ssh_command
