@@ -7,7 +7,7 @@ import string
 from pathlib import Path
 from typing import Dict, Any
 
-def generate_password(length: int = 16) -> str:
+def generate_password(length: int = 12) -> str:
     """Генерирует случайный пароль"""
     alphabet = string.ascii_letters + string.digits
     return ''.join(secrets.choice(alphabet) for _ in range(length))
@@ -44,16 +44,13 @@ def run_ansible(server_id: int, public_ip: str, template: str) -> Dict[str, Any]
     
     private_key_path = os.path.expanduser("~/.ssh/yandex_cloud")
     
-    # Проверяем, существует ли ключ
     if not os.path.exists(private_key_path):
         print(f"[ANSIBLE] ERROR: SSH key not found at {private_key_path}")
         return {"success": False, "error": "SSH key not found"}
     
-    # Ждём готовности SSH
     if not wait_for_ssh(public_ip, private_key_path):
         return {"success": False, "error": "SSH connection timeout"}
     
-    # Создаем inventory
     inventory_content = f"""{public_ip} ansible_user=ubuntu ansible_ssh_private_key_file={private_key_path} ansible_ssh_common_args='-o StrictHostKeyChecking=no'
 """
     
@@ -71,14 +68,21 @@ def run_ansible(server_id: int, public_ip: str, template: str) -> Dict[str, Any]
     print(f"[ANSIBLE] Inventory: {inventory_file}")
     print(f"[ANSIBLE] Playbook: {playbook_path}")
     
+    # Генерируем пароль для Jupyter (только для ml-gpu)
+    jupyter_password = None
+    extra_vars = f"server_name=server_{server_id}"
+    
+    if template == "ml-gpu":
+        jupyter_password = generate_password(12)
+        extra_vars = f"server_name=server_{server_id} jupyter_password={jupyter_password}"
+    
     try:
-        # Запускаем Ansible
         result = subprocess.run(
             [
                 "ansible-playbook",
                 "-i", inventory_file,
                 str(playbook_path),
-                "--extra-vars", f"server_name=server_{server_id}",
+                "--extra-vars", extra_vars,
             ],
             capture_output=True,
             text=True,
@@ -92,35 +96,21 @@ def run_ansible(server_id: int, public_ip: str, template: str) -> Dict[str, Any]
             print(f"[ANSIBLE] STDERR: {result.stderr}")
             return {"success": False, "error": result.stderr}
         
-        # Генерируем credentials в зависимости от шаблона
-        if template == "lemp":
+        # Формируем credentials
+        if template == "ml-gpu":
             credentials = {
-                "mysql_root_password": generate_password(16),
-                "mysql_database": "appdb",
-                "mysql_user": "appuser",
-                "mysql_password": generate_password(12),
-                "website_url": f"http://{public_ip}",
-                "info_url": f"http://{public_ip}/info.php",
+                "jupyter_url": f"http://{public_ip}:8888",
+                "jupyter_password": jupyter_password,
                 "ssh_command": f"ssh -i {private_key_path} ubuntu@{public_ip}",
                 "public_ip": public_ip
             }
         elif template == "docker":
             credentials = {
                 "portainer_url": f"http://{public_ip}:9000",
-                "docker_version": "Docker CE + Compose Plugin",
                 "ssh_command": f"ssh -i {private_key_path} ubuntu@{public_ip}",
-                "public_ip": public_ip,
-                "note": "Portainer: при первом входе создайте admin пользователя"
+                "public_ip": public_ip
             }
-        elif template == "ml-gpu":
-            credentials = {
-                "jupyter_url": f"http://{public_ip}:8888",
-                "jupyter_password": generate_password(12),
-                "ssh_command": f"ssh -i {private_key_path} ubuntu@{public_ip}",
-                "public_ip": public_ip,
-                "note": "Пароль для Jupyter Lab указан выше"
-            }
-        else:
+        else:  # lemp и другие
             credentials = {
                 "ssh_command": f"ssh -i {private_key_path} ubuntu@{public_ip}",
                 "public_ip": public_ip
