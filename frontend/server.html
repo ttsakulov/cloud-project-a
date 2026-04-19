@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cloud A | Детали сервера</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+
+<body class="bg-gray-50 min-h-screen">
+    <nav class="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
+        <div class="max-w-5xl mx-auto px-6 py-4">
+            <div class="flex justify-between items-center">
+                <div class="flex items-center space-x-3">
+                    <div class="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center">
+                        <i class="fas fa-cloud text-white text-lg"></i>
+                    </div>
+                    <a href="index.html" class="text-gray-800 font-semibold text-xl">Cloud A</a>
+                </div>
+                <a href="index.html" class="text-gray-500 hover:text-gray-700 transition text-sm">
+                    <i class="fas fa-arrow-left"></i> Назад
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="max-w-5xl mx-auto px-6 py-8">
+        <!-- Загрузка -->
+        <div id="loading" class="flex justify-center py-20">
+            <div class="w-10 h-10 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
+        </div>
+
+        <div id="content" class="hidden space-y-6">
+            <!-- Основная информация -->
+            <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="w-12 h-12 bg-gray-50 rounded-xl flex items-center justify-center">
+                        <i class="fas fa-server text-gray-500 text-xl"></i>
+                    </div>
+                    <div>
+                        <h1 id="server-name" class="text-xl font-semibold text-gray-800"></h1>
+                        <p id="server-status" class="text-sm"></p>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4 text-sm">
+                    <div><span class="text-gray-500">ID</span>
+                        <p id="server-id" class="text-gray-800 font-mono mt-1"></p>
+                    </div>
+                    <div><span class="text-gray-500">Шаблон</span>
+                        <p id="server-template" class="text-gray-800 mt-1"></p>
+                    </div>
+                    <div><span class="text-gray-500">IP адрес</span>
+                        <p id="server-ip" class="text-gray-800 font-mono mt-1"></p>
+                        <a id="server-link" href="#" target="_blank"
+                            class="text-blue-600 hover:text-blue-700 text-sm mt-1 inline-flex items-center gap-1"><i
+                                class="fas fa-external-link-alt text-xs"></i> Открыть</a>
+                    </div>
+                    <div><span class="text-gray-500">Создан</span>
+                        <p id="server-created" class="text-gray-500 text-sm mt-1"></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SSH Доступ -->
+            <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+                <div class="flex gap-2">
+                    <code id="ssh-command"
+                        class="flex-1 bg-gray-50 rounded-lg px-4 py-2.5 text-gray-700 font-mono text-sm border border-gray-200"></code>
+                    <button onclick="copyToClipboard('ssh-command')"
+                        class="bg-gray-100 hover:bg-gray-200 text-gray-600 px-4 rounded-lg transition">
+                        <i class="fas fa-copy"></i>
+                    </button>
+                </div>
+
+                <div class="mt-3 text-gray-500 text-xs">
+                    <i class="fas fa-key"></i> Используйте ваш <span class="font-mono">~/.ssh/id_rsa</span> (приватный
+                    ключ)
+                </div>
+            </div>
+
+            <!-- Данные для входа -->
+            <div id="credentials-card" class="bg-white rounded-xl border border-gray-200 shadow-sm p-6 hidden">
+                <h2 class="text-base font-semibold text-gray-800 mb-3"><i
+                        class="fas fa-lock mr-2 text-blue-600"></i>Данные для входа</h2>
+                <div id="credentials-content" class="space-y-3"></div>
+            </div>
+
+            <!-- Удаление -->
+            <div class="bg-red-50 border border-red-200 rounded-xl p-6">
+                <h2 class="text-base font-semibold text-red-700 mb-2"><i
+                        class="fas fa-exclamation-triangle mr-2"></i>Опасная зона</h2>
+                <p class="text-gray-600 text-sm mb-4">Удаление сервера необратимо. Все данные будут потеряны.</p>
+                <button onclick="deleteServer()"
+                    class="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg transition text-sm flex items-center gap-2">
+                    <i class="fas fa-trash"></i> Удалить сервер
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8000/api';
+        const urlParams = new URLSearchParams(window.location.search);
+        const serverId = urlParams.get('id');
+        let serverData = null;
+
+        async function loadServer() {
+            const res = await fetch(`${API_URL}/servers/${serverId}`);
+            serverData = await res.json();
+
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('content').classList.remove('hidden');
+
+            document.getElementById('server-name').textContent = serverData.name;
+            document.getElementById('server-id').textContent = serverData.id;
+
+            // IP со ссылкой
+            const ip = serverData.public_ip;
+            const ipSpan = document.getElementById('server-ip');
+            const linkSpan = document.getElementById('server-link');
+
+            if (ip) {
+                ipSpan.textContent = ip;
+
+                // Ссылка на веб-сервер (если это LEMP или n8n)
+                if (serverData.template === 'lemp') {
+                    linkSpan.href = `http://${ip}`;
+                    linkSpan.style.display = 'inline-flex';
+                    linkSpan.innerHTML = '<i class="fas fa-external-link-alt text-xs"></i> Открыть сайт';
+                } else if (serverData.template === 'n8n') {
+                    linkSpan.href = `http://${ip}:5678`;
+                    linkSpan.innerHTML = '<i class="fas fa-external-link-alt text-xs"></i> Открыть n8n';
+                } else if (serverData.template === 'docker') {
+                    linkSpan.href = `http://${ip}:9000`;
+                    linkSpan.innerHTML = '<i class="fas fa-external-link-alt text-xs"></i> Открыть Portainer';
+                } else if (serverData.template === 'ml-gpu') {
+                    linkSpan.href = `http://${ip}:8888`;
+                    linkSpan.innerHTML = '<i class="fas fa-external-link-alt text-xs"></i> Открыть Jupyter';
+                } else if (serverData.template === 'redis') {
+                    linkSpan.href = `http://${ip}:8081`;
+                    linkSpan.innerHTML = '<i class="fas fa-external-link-alt text-xs"></i> Открыть Redis Commander';
+                } else {
+                    linkSpan.style.display = 'none';
+                }
+            } else {
+                ipSpan.textContent = '—';
+                linkSpan.style.display = 'none';
+            }
+
+            document.getElementById('server-template').innerHTML = `<span class="inline-block px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs">${serverData.template}</span>`;
+            document.getElementById('server-created').textContent = new Date(serverData.created_at).toLocaleString();
+
+            const statusText = serverData.status === 'running' ? '🟢 Работает' :
+                serverData.status === 'provisioning' ? '🔄 Настройка' :
+                    serverData.status === 'creating' ? '⚡ Создание' : '🔴 Ошибка';
+            const statusClass = serverData.status === 'running' ? 'text-green-600 bg-green-50 inline-block px-2 py-0.5 rounded-full text-xs' :
+                serverData.status === 'provisioning' ? 'text-orange-600 bg-orange-50 inline-block px-2 py-0.5 rounded-full text-xs' :
+                    serverData.status === 'creating' ? 'text-blue-600 bg-blue-50 inline-block px-2 py-0.5 rounded-full text-xs' :
+                        'text-red-600 bg-red-50 inline-block px-2 py-0.5 rounded-full text-xs';
+            document.getElementById('server-status').innerHTML = `<span class="${statusClass}">${statusText}</span>`;
+
+            if (serverData.public_ip) {
+                document.getElementById('ssh-command').textContent = `ssh -i ~/.ssh/id_rsa ubuntu@${serverData.public_ip}`;
+            }
+
+            if (serverData.credentials && Object.keys(serverData.credentials).length > 0) {
+                const credsDiv = document.getElementById('credentials-content');
+                const credsCard = document.getElementById('credentials-card');
+                credsDiv.innerHTML = '';
+                for (const [key, value] of Object.entries(serverData.credentials)) {
+                    credsDiv.innerHTML += `
+                        <div>
+                            <label class="text-gray-500 text-xs block mb-1">${key}</label>
+                            <div class="flex gap-2">
+                                <code class="flex-1 bg-gray-50 rounded-lg px-4 py-2 text-gray-700 font-mono text-sm border border-gray-200 break-all">${value}</code>
+                                <button onclick="copyText('${value}')" class="bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 rounded-lg transition">
+                                    <i class="fas fa-copy"></i>
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }
+                credsCard.classList.remove('hidden');
+            }
+        }
+
+        async function deleteServer() {
+            if (!confirm(`Удалить сервер "${serverData.name}"? Это действие необратимо.`)) {
+                return;
+            }
+
+            // Показываем индикатор удаления
+            const deleteBtn = document.querySelector('.bg-red-600');
+            const dangerZone = document.querySelector('.bg-red-50');
+            const originalContent = dangerZone.innerHTML;
+
+            deleteBtn.disabled = true;
+            deleteBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Удаление...';
+
+            try {
+                const response = await fetch(`${API_URL}/servers/${serverId}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    // Меняем содержимое опасной зоны на статус удаления
+                    dangerZone.innerHTML = `
+                <div class="text-center py-4">
+                    <i class="fas fa-spinner fa-spin text-red-500 text-2xl mb-2"></i>
+                    <p class="text-red-600 font-medium">Удаление сервера...</p>
+                    <p class="text-gray-500 text-sm mt-1">Это может занять до минуты</p>
+                </div>
+            `;
+
+                    // Опрашиваем статус
+                    const checkInterval = setInterval(async () => {
+                        try {
+                            const checkRes = await fetch(`${API_URL}/servers/${serverId}`);
+                            if (checkRes.status === 404) {
+                                clearInterval(checkInterval);
+                                window.location.href = 'index.html';
+                            } else {
+                                const server = await checkRes.json();
+                                if (server.status === 'deleted') {
+                                    clearInterval(checkInterval);
+                                    window.location.href = 'index.html';
+                                }
+                            }
+                        } catch (err) {
+                            clearInterval(checkInterval);
+                            window.location.href = 'index.html';
+                        }
+                    }, 2000);
+                } else {
+                    alert('Ошибка при удалении');
+                    deleteBtn.disabled = false;
+                    deleteBtn.innerHTML = '<i class="fas fa-trash"></i> Удалить сервер';
+                }
+            } catch (error) {
+                alert('Ошибка: ' + error.message);
+                deleteBtn.disabled = false;
+                deleteBtn.innerHTML = '<i class="fas fa-trash"></i> Удалить сервер';
+            }
+        }
+        
+        function copyToClipboard(elId) {
+            const text = document.getElementById(elId).textContent;
+            navigator.clipboard.writeText(text);
+            alert('Скопировано!');
+        }
+
+        function copyText(text) {
+            navigator.clipboard.writeText(text);
+            alert('Скопировано!');
+        }
+
+        loadServer();
+    </script>
+</body>
+
+</html>

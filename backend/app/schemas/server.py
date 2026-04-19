@@ -8,6 +8,7 @@ class ServerCreate(BaseModel):
     cores: Optional[int] = 2
     memory: Optional[int] = 4
     disk_size: Optional[int] = 20
+    ssh_public_key: str
 
 class ServerResponse(BaseModel):
     id: int

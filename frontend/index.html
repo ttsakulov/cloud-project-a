@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cloud A | Серверы</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            background: #f5f5f5;
+        }
+
+        .status-running {
+            background: #e6f7e6;
+            color: #2e7d32;
+        }
+
+        .status-provisioning {
+            background: #fff3e0;
+            color: #ed6c02;
+        }
+
+        .status-creating {
+            background: #e3f2fd;
+            color: #0288d1;
+        }
+
+        .status-error {
+            background: #ffebee;
+            color: #d32f2f;
+        }
+
+        .status-deleted {
+            background: #f5f5f5;
+            color: #757575;
+        }
+
+        .card-hover {
+            transition: all 0.2s ease;
+        }
+
+        .card-hover:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.6;
+            }
+        }
+
+        .animate-pulse-custom {
+            animation: pulse 1.5s infinite;
+        }
+
+        .progress-bar {
+            transition: width 0.5s ease-out;
+            background: linear-gradient(90deg, #3b82f6, #60a5fa);
+            border-radius: 9999px;
+            height: 6px;
+        }
+
+        @keyframes redPulse {
+            0% {
+                background-color: #fee2e2;
+                border-color: #ef4444;
+            }
+
+            50% {
+                background-color: #fecaca;
+                border-color: #dc2626;
+                box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.3);
+            }
+
+            100% {
+                background-color: #fee2e2;
+                border-color: #ef4444;
+            }
+        }
+    </style>
+</head>
+
+<body class="min-h-screen">
+    <!-- Header -->
+    <nav class="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
+        <div class="max-w-7xl mx-auto px-6 py-4">
+            <div class="flex justify-between items-center">
+                <div class="flex items-center space-x-3">
+                    <div class="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center">
+                        <i class="fas fa-cloud text-white text-lg"></i>
+                    </div>
+                    <span class="text-gray-800 font-semibold text-xl">Cloud A</span>
+                </div>
+                <a href="create.html"
+                    class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg transition flex items-center gap-2 text-sm font-medium">
+                    <i class="fas fa-plus"></i> Создать сервер
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="max-w-7xl mx-auto px-6 py-8">
+        <div class="mb-6">
+            <h1 class="text-2xl font-semibold text-gray-800 mb-1">Мои серверы</h1>
+            <p class="text-gray-500 text-sm">Управление вашими виртуальными серверами</p>
+        </div>
+
+        <!-- Загрузка -->
+        <div id="loading" class="flex justify-center items-center py-20">
+            <div class="relative">
+                <div class="w-10 h-10 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
+                <p class="text-gray-500 mt-4 text-sm">Загрузка серверов...</p>
+            </div>
+        </div>
+
+        <!-- Сетка серверов -->
+        <div id="servers-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5"></div>
+
+        <!-- Нет серверов -->
+        <div id="no-servers" class="text-center py-16 hidden">
+            <div class="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i class="fas fa-server text-3xl text-gray-400"></i>
+            </div>
+            <p class="text-gray-500 text-lg">У вас пока нет серверов</p>
+            <a href="create.html"
+                class="inline-block mt-4 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition text-sm font-medium">Создать
+                первый сервер</a>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8000/api';
+
+        // Показываем всплывающее уведомление
+        function showToast(message, type) {
+            const toast = document.createElement('div');
+            toast.className = `fixed bottom-5 right-5 z-50 px-4 py-2 rounded-lg text-white text-sm ${type === 'success' ? 'bg-green-500' : 'bg-red-500'} shadow-lg`;
+            toast.innerHTML = `<i class="fas ${type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'} mr-2"></i>${message}`;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        // Проверяем, был ли создан новый сервер
+        const urlParams = new URLSearchParams(window.location.search);
+        const newServerId = urlParams.get('new_server');
+        if (newServerId) {
+            window.history.replaceState({}, document.title, window.location.pathname);
+            setTimeout(() => {
+                showToast('✅ Сервер создаётся, это займёт несколько минут', 'success');
+            }, 100);
+        }
+
+        async function loadServers() {
+            const loading = document.getElementById('loading');
+            const grid = document.getElementById('servers-grid');
+            const noServers = document.getElementById('no-servers');
+
+            try {
+                const response = await fetch(`${API_URL}/servers`);
+                const servers = await response.json();
+
+                loading.classList.add('hidden');
+
+                if (!servers || servers.length === 0) {
+                    noServers.classList.remove('hidden');
+                    grid.classList.add('hidden');
+                    return;
+                }
+
+                noServers.classList.add('hidden');
+                grid.classList.remove('hidden');
+                grid.innerHTML = '';
+
+                for (const server of servers) {
+                    const statusClass = `status-${server.status}`;
+                    const statusText = server.status === 'running' ? 'Работает' :
+                        server.status === 'provisioning' ? 'Настройка' :
+                            server.status === 'creating' ? 'Создание' : 'Ошибка';
+
+                    const card = document.createElement('div');
+                    card.className = 'bg-white rounded-xl border border-gray-200 p-5 card-hover shadow-sm';
+                    card.innerHTML = `
+                <div class="flex justify-between items-start mb-4">
+                    <div class="flex items-center gap-2">
+                        <div class="w-10 h-10 bg-gray-50 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-server text-gray-500"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-gray-800 font-medium">${server.name}</h3>
+                            <span class="text-xs text-gray-400">ID: ${server.id}</span>
+                        </div>
+                    </div>
+                    <span id="status-${server.id}" class="px-2 py-1 rounded-full text-xs font-medium ${statusClass}">${statusText}</span>
+                </div>
+
+                <div class="space-y-2 mb-4 text-sm">
+                    <div class="flex justify-between">
+                        <span class="text-gray-500">IP адрес</span>
+                        ${server.public_ip ? `<a href="http://${server.public_ip}" target="_blank" class="text-blue-600 hover:text-blue-700 font-mono text-xs">${server.public_ip} <i class="fas fa-external-link-alt text-[10px]"></i></a>` : '<span class="text-gray-700 font-mono text-xs">—</span>'}
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-500">Шаблон</span>
+                        <span class="text-gray-700">${server.template}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-500">Создан</span>
+                        <span class="text-gray-500 text-xs">${new Date(server.created_at).toLocaleDateString()}</span>
+                    </div>
+                </div>
+
+                ${server.status === 'provisioning' ? `
+                <div class="mb-4">
+                    <div class="flex justify-between text-xs mb-1">
+                        <span class="text-gray-500">Настройка сервера</span>
+                        <span id="progress-${server.id}" class="text-blue-600 text-xs font-medium">0%</span>
+                    </div>
+                    <div class="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                        <div id="progress-bar-${server.id}" class="progress-bar h-1.5 rounded-full" style="width: 0%"></div>
+                    </div>
+                </div>
+                ` : ''}
+
+                <div class="flex gap-2 pt-3 border-t border-gray-100">
+                    <button onclick="viewServer(${server.id})" class="flex-1 bg-gray-50 hover:bg-gray-100 text-gray-700 py-2 rounded-lg transition text-sm flex items-center justify-center gap-2">
+                        <i class="fas fa-eye text-xs"></i> Детали
+                    </button>
+                    <button onclick="deleteServer(${server.id}, '${server.name}')" class="bg-red-50 hover:bg-red-100 text-red-600 py-2 px-4 rounded-lg transition text-sm">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            `;
+                    grid.appendChild(card);
+
+                    // Если сервер в процессе настройки, запускаем обновление прогресса
+                    if (server.status === 'provisioning') {
+                        startProgressPolling(server.id);
+                    }
+                }
+            } catch (error) {
+                loading.classList.add('hidden');
+                console.error(error);
+            }
+        }
+
+        async function startProgressPolling(serverId) {
+            const pollInterval = setInterval(async () => {
+                try {
+                    const response = await fetch(`${API_URL}/servers/${serverId}`);
+                    const server = await response.json();
+
+                    const progressElement = document.getElementById(`progress-${serverId}`);
+                    const progressBar = document.getElementById(`progress-bar-${serverId}`);
+                    const statusSpan = document.getElementById(`status-${serverId}`);
+
+                    if (server.status === 'running') {
+                        // Обновляем на 100%
+                        if (progressElement) progressElement.textContent = '100%';
+                        if (progressBar) progressBar.style.width = '100%';
+                        if (statusSpan) {
+                            statusSpan.className = 'status-running px-2 py-1 rounded-full text-xs font-medium';
+                            statusSpan.textContent = 'Работает';
+                        }
+                        clearInterval(pollInterval);
+                        // Перезагружаем список через 1 секунду
+                        setTimeout(() => loadServers(), 1000);
+
+                    } else if (server.status === 'error') {
+                        clearInterval(pollInterval);
+                        setTimeout(() => loadServers(), 1000);
+
+                    } else if (server.status === 'provisioning') {
+                        // Имитация прогресса
+                        if (progressBar) {
+                            let currentWidth = parseFloat(progressBar.style.width) || 0;
+                            if (currentWidth < 90) {
+                                // Увеличиваем случайно, но не более 90%
+                                const increment = Math.random() * 15 + 5;
+                                const newWidth = Math.min(currentWidth + increment, 90);
+                                progressBar.style.width = `${newWidth}%`;
+                                if (progressElement) progressElement.textContent = `${Math.floor(newWidth)}%`;
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error('Progress poll error:', error);
+                }
+            }, 4000);
+        }
+
+        async function deleteServer(id, name) {
+            if (!confirm(`Удалить сервер "${name}"? Это действие необратимо.`)) {
+                return;
+            }
+
+            // Находим карточку сервера
+            let targetCard = null;
+            const cards = document.querySelectorAll('.bg-white.rounded-xl');
+            for (const card of cards) {
+                if (card.innerText.includes(`ID: ${id}`)) {
+                    targetCard = card;
+                    break;
+                }
+            }
+
+            if (targetCard) {
+                // Меняем содержимое карточки на "Удаление..."
+                targetCard.style.transition = 'all 0.3s ease';
+                targetCard.style.opacity = '0.7';
+                targetCard.style.backgroundColor = '#fee2e2';
+                targetCard.style.borderColor = '#ef4444';
+
+                // Сохраняем оригинальный HTML для восстановления при ошибке
+                const originalHTML = targetCard.innerHTML;
+
+                // Заменяем содержимое
+                targetCard.innerHTML = `
+            <div class="flex flex-col items-center justify-center py-8">
+                <i class="fas fa-spinner fa-spin text-red-500 text-3xl mb-3"></i>
+                <p class="text-red-600 font-medium">Удаление сервера...</p>
+                <p class="text-gray-500 text-xs mt-2">Это может занять до минуты</p>
+            </div>
+        `;
+
+                try {
+                    const response = await fetch(`${API_URL}/servers/${id}`, {
+                        method: 'DELETE'
+                    });
+
+                    if (response.ok) {
+                        // Опрашиваем статус, пока сервер не удалится
+                        const checkInterval = setInterval(async () => {
+                            try {
+                                const checkRes = await fetch(`${API_URL}/servers/${id}`);
+                                if (checkRes.status === 404) {
+                                    clearInterval(checkInterval);
+                                    targetCard.style.transition = 'opacity 0.5s ease';
+                                    targetCard.style.opacity = '0';
+                                    setTimeout(() => {
+                                        loadServers();
+                                    }, 500);
+                                } else {
+                                    const server = await checkRes.json();
+                                    if (server.status === 'deleted') {
+                                        clearInterval(checkInterval);
+                                        targetCard.style.transition = 'opacity 0.5s ease';
+                                        targetCard.style.opacity = '0';
+                                        setTimeout(() => {
+                                            loadServers();
+                                        }, 500);
+                                    }
+                                }
+                            } catch (err) {
+                                // 404 — сервер удалён
+                                clearInterval(checkInterval);
+                                targetCard.style.transition = 'opacity 0.5s ease';
+                                targetCard.style.opacity = '0';
+                                setTimeout(() => {
+                                    loadServers();
+                                }, 500);
+                            }
+                        }, 2000);
+                    } else {
+                        // Ошибка при удалении — восстанавливаем карточку
+                        targetCard.innerHTML = originalHTML;
+                        targetCard.style.opacity = '1';
+                        targetCard.style.backgroundColor = '';
+                        targetCard.style.borderColor = '';
+                        alert('Ошибка при удалении');
+                    }
+                } catch (error) {
+                    targetCard.innerHTML = originalHTML;
+                    targetCard.style.opacity = '1';
+                    targetCard.style.backgroundColor = '';
+                    targetCard.style.borderColor = '';
+                    alert('Ошибка: ' + error.message);
+                }
+            } else {
+                // Если карточку не нашли, просто отправляем запрос
+                try {
+                    await fetch(`${API_URL}/servers/${id}`, { method: 'DELETE' });
+                    loadServers();
+                } catch (error) {
+                    alert('Ошибка: ' + error.message);
+                }
+            }
+        }
+
+        function viewServer(id) {
+            window.location.href = `server.html?id=${id}`;
+        }
+
+        loadServers();
+        setInterval(loadServers, 15000);
+    </script>
+</body>
+
+</html>

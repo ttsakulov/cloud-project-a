@@ -71,7 +71,7 @@ async def create_server(
             "token": get_env_var("YC_TOKEN"),
             "folder_id": get_env_var("YC_FOLDER_ID"),
             "subnet_id": get_env_var("YC_SUBNET_ID"),
-            "ssh_public_key": get_ssh_public_key(),
+            "ssh_public_key": server_data.ssh_public_key,
             "cores": server_data.cores,
             "memory": server_data.memory,
             "disk_size": server_data.disk_size
@@ -103,8 +103,10 @@ async def create_server(
 
 @router.get("/", response_model=list[ServerResponse])
 def list_servers(db: Session = Depends(get_db)):
-    """Получает список всех серверов (кроме удалённых)"""
-    servers = db.query(Server).filter(Server.status != "deleted").all()
+    """Получает список активных серверов (без удалённых и с ошибкой)"""
+    servers = db.query(Server).filter(
+        Server.status.in_(["running", "provisioning", "creating"])
+    ).all()
     return servers
 
 @router.get("/templates")
