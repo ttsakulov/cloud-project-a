@@ -68,13 +68,17 @@ def run_ansible(server_id: int, public_ip: str, template: str) -> Dict[str, Any]
     print(f"[ANSIBLE] Inventory: {inventory_file}")
     print(f"[ANSIBLE] Playbook: {playbook_path}")
     
-    # Генерируем пароль для Jupyter (только для ml-gpu)
-    jupyter_password = None
+    # Генерируем пароль
+    password = None
     extra_vars = f"server_name=server_{server_id}"
     
     if template == "ml-gpu":
-        jupyter_password = generate_password(12)
-        extra_vars = f"server_name=server_{server_id} jupyter_password={jupyter_password}"
+        password = generate_password(12)
+        extra_vars = f"server_name=server_{server_id} jupyter_password={password}"
+    
+    if template == "redis":
+        password = generate_password(12)
+        extra_vars = f"server_name=server_{server_id} redis_password={password}"
     
     try:
         result = subprocess.run(
@@ -100,13 +104,21 @@ def run_ansible(server_id: int, public_ip: str, template: str) -> Dict[str, Any]
         if template == "ml-gpu":
             credentials = {
                 "jupyter_url": f"http://{public_ip}:8888",
-                "jupyter_password": jupyter_password,
+                "jupyter_password": password,
                 "ssh_command": f"ssh -i {private_key_path} ubuntu@{public_ip}",
                 "public_ip": public_ip
             }
         elif template == "docker":
             credentials = {
                 "portainer_url": f"http://{public_ip}:9000",
+                "ssh_command": f"ssh -i {private_key_path} ubuntu@{public_ip}",
+                "public_ip": public_ip
+            }
+        elif template == "redis":
+            credentials = {
+                "redis_url": f"redis://:{password}@{public_ip}:6379",
+                "commander_url": f"http://{public_ip}:8081",
+                "redis_password": password,
                 "ssh_command": f"ssh -i {private_key_path} ubuntu@{public_ip}",
                 "public_ip": public_ip
             }

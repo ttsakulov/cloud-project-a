@@ -1,0 +1,12 @@
+name: Redis Cache + Commander
+description: Высокопроизводительное in-memory хранилище с веб-интерфейсом
+playbook: redis.yml
+preset_id: 2-4-50
+os_id: ubuntu-2204-lts
+is_ddos_guard: false
+bandwidth: 200
+credentials:
+  - redis_url
+  - commander_url
+  - redis_password
+  - ssh_command

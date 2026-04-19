@@ -1,0 +1,57 @@
+---
+- name: Deploy Redis with Redis Commander
+  hosts: all
+  become: yes
+  vars:
+    redis_port: 6379
+    commander_port: 8081
+    # redis_password приходит из --extra-vars
+
+  tasks:
+    - name: Install Docker
+      apt:
+        name: docker.io
+        state: present
+
+    - name: Start Docker
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Run Redis container
+      docker_container:
+        name: redis
+        image: redis:alpine
+        restart_policy: always
+        ports:
+          - "{{ redis_port }}:6379"
+        command: redis-server --appendonly yes --requirepass "{{ redis_password }}"
+        volumes:
+          - redis_data:/data
+        state: started
+
+    - name: Run Redis Commander
+      docker_container:
+        name: redis-commander
+        image: rediscommander/redis-commander:latest
+        restart_policy: always
+        ports:
+          - "{{ commander_port }}:8081"
+        env:
+          REDIS_HOSTS: "local:redis:{{ redis_port }}"
+          REDIS_PASSWORD: "{{ redis_password }}"
+        state: started
+
+    - name: Create info file
+      copy:
+        content: |
+          =========================================
+          Redis Stack installed!
+          =========================================
+          Redis password: {{ redis_password }}
+          Redis Commander: http://{{ ansible_default_ipv4.address }}:{{ commander_port }}
+          SSH: ssh -i ~/.ssh/yandex_cloud ubuntu@{{ ansible_default_ipv4.address }}
+          =========================================
+        dest: /home/ubuntu/info.txt
+        mode: '0644'
