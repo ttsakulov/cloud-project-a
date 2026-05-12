@@ -6,6 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.deps import get_current_user
+from app.models.user import User
 from app.models.server import Server
 from app.schemas.server import ServerCreate, ServerResponse
 from app.core.terraform.service import TerraformService
@@ -16,16 +18,11 @@ template_manager = TemplateManager()
 router = APIRouter(prefix="/api/servers", tags=["servers"])
 tf_service = TerraformService()
 
+
 def generate_unique_name() -> str:
     """Генерирует уникальное имя сервера"""
     timestamp = int(time.time())
     return f"srv-{timestamp}"
-
-def get_ssh_public_key() -> str:
-    """Читает публичный SSH ключ"""
-    ssh_key_path = os.path.expanduser("~/.ssh/yandex_cloud.pub")
-    with open(ssh_key_path, 'r') as f:
-        return f.read().strip()
 
 
 def get_env_var(name: str) -> str:
@@ -40,22 +37,26 @@ def get_env_var(name: str) -> str:
 async def create_server(
     server_data: ServerCreate,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """Создает новый сервер с выбранным стеком"""
     
     # Генерируем имя, если не указано, или проверяем уникальность
     if server_data.name:
-        existing = db.query(Server).filter(Server.name == server_data.name).first()
+        existing = db.query(Server).filter(
+            Server.name == server_data.name,
+            Server.user_id == current_user.id
+        ).first()
         if existing:
             raise HTTPException(status_code=400, detail="Server with this name already exists")
         server_name = server_data.name
     else:
-        # Автоматически генерируем уникальное имя
         server_name = generate_unique_name()
     
-    # Создаем запись в БД
+    # Создаем запись в БД с привязкой к пользователю
     db_server = Server(
+        user_id=current_user.id,
         name=server_name,
         template=server_data.template,
         status="creating"
@@ -65,9 +66,8 @@ async def create_server(
     db.refresh(db_server)
     
     try:
-        # Получаем переменные окружения
         tf_config = {
-            "server_name": server_name,  # используем сгенерированное имя
+            "server_name": server_name,
             "token": get_env_var("YC_TOKEN"),
             "folder_id": get_env_var("YC_FOLDER_ID"),
             "subnet_id": get_env_var("YC_SUBNET_ID"),
@@ -77,21 +77,17 @@ async def create_server(
             "disk_size": server_data.disk_size
         }
         
-        # Создаем ВМ через Terraform
         result = tf_service.create_server(tf_config)
         
-        # Обновляем запись в БД
         db_server.public_ip = result["public_ip"]
         db_server.status = "provisioning"
         db.commit()
         
-        # Запускаем Ansible в фоне
         background_tasks.add_task(
             run_ansible_and_update,
             server_id=db_server.id,
             public_ip=result["public_ip"],
-            template=server_data.template,
-            db=db  # передаем сессию
+            template=server_data.template
         )
         
         return db_server
@@ -101,17 +97,24 @@ async def create_server(
         db.commit()
         raise HTTPException(status_code=500, detail=f"Failed to create VM: {str(e)}")
 
+
 @router.get("/", response_model=list[ServerResponse])
-def list_servers(db: Session = Depends(get_db)):
-    """Получает список активных серверов (без удалённых)"""
+def list_servers(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Получает список активных серверов текущего пользователя"""
     servers = db.query(Server).filter(
+        Server.user_id == current_user.id,
         Server.status.in_(["running", "provisioning", "creating", "stopped"])
     ).all()
     return servers
 
+
 @router.get("/templates")
 def list_templates():
     return template_manager.list_templates()
+
 
 @router.get("/templates/{name}")
 def get_template(name: str):
@@ -120,10 +123,18 @@ def get_template(name: str):
         raise HTTPException(404, "Template not found")
     return template
 
+
 @router.get("/{server_id}", response_model=ServerResponse)
-def get_server(server_id: int, db: Session = Depends(get_db)):
+def get_server(
+    server_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     """Получает информацию о сервере"""
-    server = db.query(Server).filter(Server.id == server_id).first()
+    server = db.query(Server).filter(
+        Server.id == server_id,
+        Server.user_id == current_user.id
+    ).first()
     if not server:
         raise HTTPException(status_code=404, detail="Server not found")
     
@@ -132,14 +143,14 @@ def get_server(server_id: int, db: Session = Depends(get_db)):
     
     return server
 
-def run_ansible_and_update(server_id: int, public_ip: str, template: str, db: Session):
+
+def run_ansible_and_update(server_id: int, public_ip: str, template: str):
     """Запускает Ansible и обновляет БД с результатом"""
     from app.core.ansible_runner import run_ansible
     from app.core.database import SessionLocal
     
     result = run_ansible(server_id, public_ip, template)
     
-    # Создаем новую сессию, так как фоновая задача не может использовать переданную
     new_db = SessionLocal()
     try:
         server = new_db.query(Server).filter(Server.id == server_id).first()
@@ -154,14 +165,21 @@ def run_ansible_and_update(server_id: int, public_ip: str, template: str, db: Se
     finally:
         new_db.close()
 
+
 @router.delete("/{server_id}")
-def delete_server(server_id: int, db: Session = Depends(get_db)):
+def delete_server(
+    server_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     """Удаляет сервер по ID"""
-    server = db.query(Server).filter(Server.id == server_id).first()
+    server = db.query(Server).filter(
+        Server.id == server_id,
+        Server.user_id == current_user.id
+    ).first()
     if not server:
         raise HTTPException(status_code=404, detail="Server not found")
     
-    # Собираем конфиг для destroy
     config = {
         "token": os.getenv("YC_TOKEN"),
         "folder_id": os.getenv("YC_FOLDER_ID"),
@@ -176,7 +194,6 @@ def delete_server(server_id: int, db: Session = Depends(get_db)):
         "ssh_public_key": "dummy"
     }
     
-    # Пытаемся удалить ВМ через Terraform
     success = tf_service.destroy_server(server.name, config)
     
     if success:
@@ -192,9 +209,16 @@ def delete_server(server_id: int, db: Session = Depends(get_db)):
 
 
 @router.delete("/by-name/{server_name}")
-def delete_server_by_name(server_name: str, db: Session = Depends(get_db)):
+def delete_server_by_name(
+    server_name: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     """Удаляет сервер по имени"""
-    server = db.query(Server).filter(Server.name == server_name).first()
+    server = db.query(Server).filter(
+        Server.name == server_name,
+        Server.user_id == current_user.id
+    ).first()
     if not server:
         raise HTTPException(status_code=404, detail="Server not found")
     
@@ -222,10 +246,18 @@ def delete_server_by_name(server_name: str, db: Session = Depends(get_db)):
         return {"message": f"Server {server_name} deleted successfully"}
     else:
         return {"message": f"Server {server_name} marked as deleted (state file not found)"}
-    
+
+
 @router.post("/{server_id}/stop")
-def stop_server(server_id: int, db: Session = Depends(get_db)):
-    server = db.query(Server).filter(Server.id == server_id).first()
+def stop_server(
+    server_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    server = db.query(Server).filter(
+        Server.id == server_id,
+        Server.user_id == current_user.id
+    ).first()
     if not server:
         raise HTTPException(404, "Server not found")
     
@@ -235,9 +267,17 @@ def stop_server(server_id: int, db: Session = Depends(get_db)):
         return {"message": f"Server {server.name} stopped"}
     raise HTTPException(500, "Failed to stop server")
 
+
 @router.post("/{server_id}/start")
-def start_server(server_id: int, db: Session = Depends(get_db)):
-    server = db.query(Server).filter(Server.id == server_id).first()
+def start_server(
+    server_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    server = db.query(Server).filter(
+        Server.id == server_id,
+        Server.user_id == current_user.id
+    ).first()
     if not server:
         raise HTTPException(404, "Server not found")
     
@@ -247,9 +287,17 @@ def start_server(server_id: int, db: Session = Depends(get_db)):
         return {"message": f"Server {server.name} started"}
     raise HTTPException(500, "Failed to start server")
 
+
 @router.post("/{server_id}/reboot")
-def reboot_server(server_id: int, db: Session = Depends(get_db)):
-    server = db.query(Server).filter(Server.id == server_id).first()
+def reboot_server(
+    server_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    server = db.query(Server).filter(
+        Server.id == server_id,
+        Server.user_id == current_user.id
+    ).first()
     if not server:
         raise HTTPException(404, "Server not found")
     

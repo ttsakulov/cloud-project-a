@@ -9,6 +9,14 @@
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+    <script>
+        // Проверка авторизации
+        const token = localStorage.getItem('token');
+        if (!token) {
+            window.location.href = 'login.html';
+        }
+    </script>
+
     <nav class="navbar">
         <div class="container">
             <div class="nav-brand">
@@ -102,9 +110,8 @@
             const descSpan = document.getElementById('template-desc');
 
             try {
-                const response = await fetch(`${API_URL}/servers/templates`);
-                const templates = await response.json();
-
+                const templates = await apiRequest('/servers/templates');
+                
                 if (!templates || templates.length === 0) {
                     select.innerHTML = '<option value="">Нет доступных стеков</option>';
                     return;
@@ -126,6 +133,7 @@
                 };
             } catch (error) {
                 select.innerHTML = '<option value="">Ошибка загрузки стеков</option>';
+                console.error(error);
             }
         }
 
@@ -159,16 +167,11 @@
             if (name) data.name = name;
 
             try {
-                const res = await fetch(`${API_URL}/servers`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
-                });
-                const result = await res.json();
-                if (res.ok) {
+                const result = await apiRequest('/servers', 'POST', data);
+                if (result && result.id) {
                     window.location.href = `index.html?new_server=${result.id}`;
                 } else {
-                    alert('Ошибка: ' + (result.detail || 'Неизвестная ошибка'));
+                    alert('Ошибка при создании сервера');
                     btn.disabled = false;
                     btn.innerHTML = '<i class="fas fa-play"></i> Создать сервер';
                 }
