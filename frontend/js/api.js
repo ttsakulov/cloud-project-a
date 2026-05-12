@@ -1,4 +1,3 @@
-// Общие функции для работы с API
 const API_URL = 'http://localhost:8000/api';
 
 async function apiRequest(endpoint, method = 'GET', data = null) {

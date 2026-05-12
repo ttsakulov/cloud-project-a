@@ -9,7 +9,7 @@ class Server(Base):
     name = Column(String(100), unique=True, nullable=False, index=True)
     template = Column(String(50), nullable=False)
     public_ip = Column(String(15), nullable=True)
-    status = Column(String(20), default="creating")
+    status = Column(String(20), default="creating")  # creating, provisioning, running, stopped, error, deleted
     credentials = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     deleted_at = Column(DateTime, nullable=True)

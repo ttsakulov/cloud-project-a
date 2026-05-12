@@ -103,9 +103,9 @@ async def create_server(
 
 @router.get("/", response_model=list[ServerResponse])
 def list_servers(db: Session = Depends(get_db)):
-    """Получает список активных серверов (без удалённых и с ошибкой)"""
+    """Получает список активных серверов (без удалённых)"""
     servers = db.query(Server).filter(
-        Server.status.in_(["running", "provisioning", "creating"])
+        Server.status.in_(["running", "provisioning", "creating", "stopped"])
     ).all()
     return servers
 
@@ -222,3 +222,37 @@ def delete_server_by_name(server_name: str, db: Session = Depends(get_db)):
         return {"message": f"Server {server_name} deleted successfully"}
     else:
         return {"message": f"Server {server_name} marked as deleted (state file not found)"}
+    
+@router.post("/{server_id}/stop")
+def stop_server(server_id: int, db: Session = Depends(get_db)):
+    server = db.query(Server).filter(Server.id == server_id).first()
+    if not server:
+        raise HTTPException(404, "Server not found")
+    
+    if tf_service.stop_server(server.name):
+        server.status = "stopped"
+        db.commit()
+        return {"message": f"Server {server.name} stopped"}
+    raise HTTPException(500, "Failed to stop server")
+
+@router.post("/{server_id}/start")
+def start_server(server_id: int, db: Session = Depends(get_db)):
+    server = db.query(Server).filter(Server.id == server_id).first()
+    if not server:
+        raise HTTPException(404, "Server not found")
+    
+    if tf_service.start_server(server.name):
+        server.status = "running"
+        db.commit()
+        return {"message": f"Server {server.name} started"}
+    raise HTTPException(500, "Failed to start server")
+
+@router.post("/{server_id}/reboot")
+def reboot_server(server_id: int, db: Session = Depends(get_db)):
+    server = db.query(Server).filter(Server.id == server_id).first()
+    if not server:
+        raise HTTPException(404, "Server not found")
+    
+    if tf_service.reboot_server(server.name):
+        return {"message": f"Server {server.name} rebooting"}
+    raise HTTPException(500, "Failed to reboot server")

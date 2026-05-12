@@ -1,107 +1,91 @@
 <!DOCTYPE html>
 <html lang="ru">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cloud A | Создать сервер</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
 </head>
-
-<body class="bg-gray-50 min-h-screen">
-    <nav class="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
-        <div class="max-w-4xl mx-auto px-6 py-4">
-            <div class="flex justify-between items-center">
-                <div class="flex items-center space-x-3">
-                    <div class="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center">
-                        <i class="fas fa-cloud text-white text-lg"></i>
-                    </div>
-                    <a href="index.html" class="text-gray-800 font-semibold text-xl">Cloud A</a>
+<body>
+    <nav class="navbar">
+        <div class="container">
+            <div class="nav-brand">
+                <div class="logo-icon">
+                    <i class="fas fa-cloud"></i>
                 </div>
-                <a href="index.html" class="text-gray-500 hover:text-gray-700 transition text-sm">
-                    <i class="fas fa-arrow-left"></i> Назад
-                </a>
+                <a href="index.html" class="logo-text">Cloud A</a>
             </div>
+            <a href="index.html" class="nav-back">
+                <i class="fas fa-arrow-left"></i> Назад
+            </a>
         </div>
     </nav>
 
-    <div class="max-w-4xl mx-auto px-6 py-8">
-        <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-8">
-            <h1 class="text-2xl font-semibold text-gray-800 mb-2">Создание сервера</h1>
-            <p class="text-gray-500 text-sm mb-6">Настройте параметры вашего нового сервера</p>
+    <main class="container">
+        <div class="form-container">
+            <div class="form-header">
+                <h1>Создание сервера</h1>
+                <p>Настройте параметры вашего нового сервера</p>
+            </div>
 
-            <form id="create-form" class="space-y-6">
-                <div>
-                    <label class="block text-gray-700 text-sm font-medium mb-2">Имя сервера <span
-                            class="text-gray-400 text-xs font-normal">(опционально)</span></label>
-                    <input type="text" id="name" placeholder="Оставьте пустым для автогенерации"
-                        class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-gray-700 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition">
+            <form id="create-form" class="server-form">
+                <div class="form-group">
+                    <label>Имя сервера <span>(опционально)</span></label>
+                    <input type="text" id="name" placeholder="Оставьте пустым для автогенерации">
                 </div>
 
-                <div>
-                    <label class="block text-gray-700 text-sm font-medium mb-2">Стек / Шаблон</label>
-                    <select id="template"
-                        class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-gray-700 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition cursor-pointer bg-white">
+                <div class="form-group">
+                    <label>Стек / Шаблон</label>
+                    <select id="template">
                         <option value="">Загрузка стеков...</option>
                     </select>
-                    <div class="mt-2 text-gray-400 text-xs flex items-center gap-1.5">
-                        <i class="fas fa-info-circle text-xs"></i>
-                        <span id="template-desc">Выберите стек для отображения описания</span>
+                    <p id="template-desc" class="form-hint"></p>
+                </div>
+
+                <div class="form-group">
+                    <label>CPU (ядра)</label>
+                    <div class="range-wrapper">
+                        <input type="range" id="cores" min="2" max="8" step="2" value="2">
+                        <span id="cores-value" class="range-value">2</span>
                     </div>
                 </div>
 
-                <div>
-                    <div class="flex justify-between mb-2">
-                        <label class="text-gray-700 text-sm font-medium">CPU (ядра)</label>
-                        <span id="cores-value" class="text-blue-600 text-sm font-mono">2</span>
-                    </div>
-                    <input type="range" id="cores" min="2" max="8" step="2" value="2"
-                        class="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600">
-                </div>
-
-                <div>
-                    <div class="flex justify-between mb-2">
-                        <label class="text-gray-700 text-sm font-medium">RAM (ГБ)</label>
-                        <span id="memory-value" class="text-blue-600 text-sm font-mono">4</span>
-                    </div>
-                    <input type="range" id="memory" min="2" max="16" step="2" value="4"
-                        class="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600">
-                </div>
-
-                <div>
-                    <div class="flex justify-between mb-2">
-                        <label class="text-gray-700 text-sm font-medium">Диск (ГБ)</label>
-                        <span id="disk-value" class="text-blue-600 text-sm font-mono">20</span>
-                    </div>
-                    <input type="range" id="disk" min="20" max="100" step="10" value="20"
-                        class="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600">
-                </div>
-
-                <div>
-                    <label class="block text-gray-700 text-sm font-medium mb-2">SSH публичный ключ <span
-                            class="text-red-500">*</span></label>
-                    <textarea id="ssh_key" rows="3"
-                        class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-gray-700 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition font-mono text-sm"
-                        placeholder="ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQ..."></textarea>
-                    <div class="mt-2 text-gray-400 text-xs">
-                        <i class="fas fa-info-circle"></i> Не знаете, как получить SSH ключ?
-                        <button type="button" onclick="showSshHelp()"
-                            class="text-blue-500 hover:text-blue-600">Инструкция</button>
+                <div class="form-group">
+                    <label>RAM (ГБ)</label>
+                    <div class="range-wrapper">
+                        <input type="range" id="memory" min="2" max="16" step="2" value="4">
+                        <span id="memory-value" class="range-value">4</span>
                     </div>
                 </div>
 
-                <button type="submit"
-                    class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-lg transition flex items-center justify-center gap-2 font-medium">
+                <div class="form-group">
+                    <label>Диск (ГБ)</label>
+                    <div class="range-wrapper">
+                        <input type="range" id="disk" min="20" max="100" step="10" value="20">
+                        <span id="disk-value" class="range-value">20</span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>SSH публичный ключ <span class="required">*</span></label>
+                    <textarea id="ssh_key" rows="3" placeholder="ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQ..."></textarea>
+                    <div class="form-hint">
+                        <i class="fas fa-info-circle"></i>
+                        <button type="button" onclick="showSshHelp()" class="link-btn">Как получить SSH ключ?</button>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn-primary btn-block">
                     <i class="fas fa-play"></i> Создать сервер
                 </button>
             </form>
         </div>
-    </div>
+    </main>
 
+    <script src="js/api.js"></script>
     <script>
-        const API_URL = 'http://localhost:8000/api';
-
         const coresSlider = document.getElementById('cores');
         const memorySlider = document.getElementById('memory');
         const diskSlider = document.getElementById('disk');
@@ -138,16 +122,10 @@
 
                 select.onchange = () => {
                     const selected = select.options[select.selectedIndex];
-                    if (selected && selected.value) {
-                        descSpan.innerHTML = `<i class="fas fa-cube mr-1"></i> ${selected.dataset.desc}`;
-                    } else {
-                        descSpan.innerHTML = 'Выберите стек для отображения описания';
-                    }
+                    descSpan.innerHTML = selected && selected.value ? `<i class="fas fa-cube"></i> ${selected.dataset.desc}` : '';
                 };
-
             } catch (error) {
                 select.innerHTML = '<option value="">Ошибка загрузки стеков</option>';
-                descSpan.innerHTML = 'Убедитесь, что API запущен на порту 8000';
             }
         }
 
@@ -156,18 +134,14 @@
 
             const template = document.getElementById('template').value;
             const sshKey = document.getElementById('ssh_key').value;
-            const btn = e.target.querySelector('button[type="submit"]');  // ← ПЕРЕНЕСТИ СЮДА
+            const btn = e.target.querySelector('button[type="submit"]');
 
             if (!template) {
                 alert('Пожалуйста, выберите стек');
-                btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-play"></i> Создать сервер';
                 return;
             }
             if (!sshKey) {
                 alert('Введите SSH публичный ключ');
-                btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-play"></i> Создать сервер';
                 return;
             }
 
@@ -205,19 +179,18 @@
             }
         };
 
-        loadTemplates();
-
         function showSshHelp() {
             alert(
-                "Как получить SSH ключ:\n" +
+                "Как получить SSH ключ:\n\n" +
                 "1. Откройте терминал\n" +
-                "2. Выполните команду: ssh-keygen -t rsa -b 4096\n" +
-                "3. Нажимайте Enter (оставьте все по умолчанию)\n" +
+                "2. Выполните: ssh-keygen -t rsa -b 4096\n" +
+                "3. Нажимайте Enter (оставьте всё по умолчанию)\n" +
                 "4. Скопируйте публичный ключ: cat ~/.ssh/id_rsa.pub\n" +
                 "5. Вставьте скопированный ключ в поле выше"
             );
         }
+
+        loadTemplates();
     </script>
 </body>
-
 </html>

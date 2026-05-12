@@ -18,11 +18,9 @@ class TerraformService:
         work_dir = Path(tempfile.mkdtemp(prefix=f"tf_{config['server_name']}_"))
         
         try:
-            # Копируем шаблоны
             for tf_file in self.templates_dir.glob("*.tf"):
                 shutil.copy(tf_file, work_dir / tf_file.name)
             
-            # Создаем terraform.tfvars
             vars_file = work_dir / "terraform.tfvars"
             with open(vars_file, "w") as f:
                 for key, value in config.items():
@@ -33,7 +31,6 @@ class TerraformService:
             
             env = os.environ.copy()
             
-            # Terraform init
             subprocess.run(
                 ["terraform", "init"],
                 cwd=work_dir,
@@ -44,7 +41,6 @@ class TerraformService:
                 timeout=60
             )
             
-            # Terraform apply
             subprocess.run(
                 ["terraform", "apply", "-auto-approve"],
                 cwd=work_dir,
@@ -55,7 +51,6 @@ class TerraformService:
                 timeout=300
             )
             
-            # Получаем outputs
             result = subprocess.run(
                 ["terraform", "output", "-json"],
                 cwd=work_dir,
@@ -67,7 +62,6 @@ class TerraformService:
             
             outputs = json.loads(result.stdout)
             
-            # Сохраняем state файл
             state_file = work_dir / "terraform.tfstate"
             if state_file.exists():
                 dest_file = self.states_dir / f"{config['server_name']}.tfstate"
@@ -95,23 +89,19 @@ class TerraformService:
         work_dir = Path(tempfile.mkdtemp(prefix=f"tf_destroy_{server_name}_"))
     
         try:
-            # Копируем шаблоны
             for tf_file in self.templates_dir.glob("*.tf"):
                 shutil.copy(tf_file, work_dir / tf_file.name)
         
-            # Копируем state файл
             shutil.copy(state_file, work_dir / "terraform.tfstate")
         
-            # Создаем terraform.tfvars с переменными (нужны для destroy)
             vars_file = work_dir / "terraform.tfvars"
         
-            # Если передан config, используем его, иначе берем из окружения
             if config is None:
                 config = {
                     "token": os.getenv("YC_TOKEN"),
                     "folder_id": os.getenv("YC_FOLDER_ID"),
                     "subnet_id": os.getenv("YC_SUBNET_ID"),
-                    "ssh_public_key": "dummy",  # Не используется при destroy, но нужно
+                    "ssh_public_key": "dummy",
                     "server_name": server_name,
                     "cores": 2,
                     "memory": 4,
@@ -130,7 +120,6 @@ class TerraformService:
         
             env = os.environ.copy()
         
-            # Terraform init
             subprocess.run(
                 ["terraform", "init"],
                 cwd=work_dir,
@@ -141,7 +130,6 @@ class TerraformService:
                 timeout=60
             )
         
-            # Terraform destroy
             result = subprocess.run(
                 ["terraform", "destroy", "-auto-approve"],
                 cwd=work_dir,
@@ -155,7 +143,6 @@ class TerraformService:
                 print(f"Destroy failed: {result.stderr}")
                 return False
         
-            # Удаляем state файл
             state_file.unlink()
             print(f"State file {state_file} deleted")
             return True
@@ -168,3 +155,62 @@ class TerraformService:
             return False
         finally:
             shutil.rmtree(work_dir, ignore_errors=True)
+
+    def _get_instance_id(self, server_name: str) -> str | None:
+        """Получает ID ВМ по имени через YC CLI"""
+        try:
+            result = subprocess.run(
+                ["yc", "compute", "instance", "get", "--name", server_name, "--format", "json"],
+                capture_output=True,
+                text=True
+            )
+            if result.returncode != 0:
+                return None
+            return json.loads(result.stdout)["id"]
+        except:
+            return None
+
+    def stop_server(self, server_name: str) -> bool:
+        """Останавливает ВМ через YC CLI"""
+        instance_id = self._get_instance_id(server_name)
+        if not instance_id:
+            return False
+        try:
+            result = subprocess.run(
+                ["yc", "compute", "instance", "stop", "--id", instance_id],
+                capture_output=True,
+                text=True
+            )
+            return result.returncode == 0
+        except:
+            return False
+
+    def start_server(self, server_name: str) -> bool:
+        """Запускает ВМ через YC CLI"""
+        instance_id = self._get_instance_id(server_name)
+        if not instance_id:
+            return False
+        try:
+            result = subprocess.run(
+                ["yc", "compute", "instance", "start", "--id", instance_id],
+                capture_output=True,
+                text=True
+            )
+            return result.returncode == 0
+        except:
+            return False
+
+    def reboot_server(self, server_name: str) -> bool:
+        """Перезагружает ВМ через YC CLI"""
+        instance_id = self._get_instance_id(server_name)
+        if not instance_id:
+            return False
+        try:
+            result = subprocess.run(
+                ["yc", "compute", "instance", "restart", "--id", instance_id],
+                capture_output=True,
+                text=True
+            )
+            return result.returncode == 0
+        except:
+            return False
