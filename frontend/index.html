@@ -192,28 +192,36 @@
                 try {
                     const server = await apiRequest(`/servers/${serverId}`);
 
+                    const progressElement = document.getElementById(`progress-${serverId}`);
+                    const progressBar = document.getElementById(`progress-bar-${serverId}`);
+
                     if (server.status === 'running') {
+                        // Ansible завершил работу
+                        if (progressElement) progressElement.textContent = '100%';
+                        if (progressBar) progressBar.style.width = '100%';
                         clearInterval(pollInterval);
-                        loadServers();
+                        setTimeout(() => loadServers(), 1000);
+
                     } else if (server.status === 'error') {
                         clearInterval(pollInterval);
-                        loadServers();
+                        setTimeout(() => loadServers(), 1000);
+
                     } else if (server.status === 'provisioning') {
-                        const progressBar = document.getElementById(`progress-bar-${serverId}`);
-                        const progressText = document.getElementById(`progress-${serverId}`);
+                        // Имитация прогресса (до 90%, без зацикливания)
                         if (progressBar) {
-                            let width = parseFloat(progressBar.style.width) || 0;
-                            if (width < 90) {
-                                width = Math.min(width + Math.random() * 10 + 5, 90);
-                                progressBar.style.width = `${width}%`;
-                                if (progressText) progressText.textContent = `${Math.floor(width)}%`;
+                            let currentWidth = parseFloat(progressBar.style.width) || 0;
+                            if (currentWidth < 90) {
+                                // Плавно увеличиваем до 90%
+                                const newWidth = Math.min(currentWidth + 3, 90);
+                                progressBar.style.width = `${newWidth}%`;
+                                if (progressElement) progressElement.textContent = `${Math.floor(newWidth)}%`;
                             }
                         }
                     }
                 } catch (error) {
                     console.error('Progress poll error:', error);
                 }
-            }, 4000);
+            }, 5000);  // Проверка каждые 5 секунд
         }
 
         async function controlServer(id, action) {
@@ -232,18 +240,43 @@
             if (targetCard) {
                 targetCard.classList.add('deleting');
                 targetCard.innerHTML = `
-                    <div class="deleting-state">
-                        <i class="fas fa-spinner fa-spin"></i>
-                        <p>${action === 'stop' ? 'Остановка' : action === 'start' ? 'Запуск' : 'Перезагрузка'} сервера...</p>
-                        <span>Это может занять до минуты</span>
-                    </div>
-                `;
+            <div class="deleting-state">
+                <i class="fas fa-spinner fa-spin"></i>
+                <p>${action === 'stop' ? 'Остановка' : action === 'start' ? 'Запуск' : 'Перезагрузка'} сервера...</p>
+                <span>Это может занять до минуты</span>
+            </div>
+        `;
             }
 
             try {
+                // Отправляем запрос на управление
                 await apiRequest(`/servers/${id}/${action}`, 'POST');
-                showToast(`Сервер ${actionText}ен`, 'success');
-                setTimeout(() => loadServers(), 2000);
+
+                // Опрашиваем статус каждые 3 секунды
+                const pollInterval = setInterval(async () => {
+                    try {
+                        const server = await apiRequest(`/servers/${id}`);
+
+                        // Если статус изменился на нужный — анимация завершается
+                        if (action === 'stop' && server.status === 'stopped') {
+                            clearInterval(pollInterval);
+                            showToast(`Сервер остановлен`, 'success');
+                            loadServers();
+                        } else if (action === 'start' && server.status === 'running') {
+                            clearInterval(pollInterval);
+                            showToast(`Сервер запущен`, 'success');
+                            loadServers();
+                        } else if (action === 'reboot' && server.status === 'running') {
+                            clearInterval(pollInterval);
+                            showToast(`Сервер перезагружен`, 'success');
+                            loadServers();
+                        }
+                    } catch (err) {
+                        // Если сервер недоступен — продолжаем ждать
+                        console.log('Waiting for status update...', err);
+                    }
+                }, 3000);
+
             } catch (error) {
                 if (targetCard) {
                     targetCard.classList.remove('deleting');
@@ -268,23 +301,26 @@
             if (targetCard) {
                 targetCard.classList.add('deleting');
                 targetCard.innerHTML = `
-                    <div class="deleting-state">
-                        <i class="fas fa-spinner fa-spin"></i>
-                        <p>Удаление сервера...</p>
-                        <span>Это может занять до минуты</span>
-                    </div>
-                `;
+            <div class="deleting-state">
+                <i class="fas fa-spinner fa-spin"></i>
+                <p>Удаление сервера...</p>
+                <span>Это может занять до минуты</span>
+            </div>
+        `;
             }
 
             try {
                 await apiRequest(`/servers/${id}`, 'DELETE');
 
-                const checkInterval = setInterval(async () => {
+                const pollInterval = setInterval(async () => {
                     try {
                         await apiRequest(`/servers/${id}`);
+                        // Сервер всё ещё существует — продолжаем ждать
+                        console.log('Waiting for deletion...');
                     } catch (err) {
-                        if (err.message === 'Not authenticated' || err.message.includes('404')) {
-                            clearInterval(checkInterval);
+                        // Если 404 или "Server not found" — сервер удалён
+                        if (err.message.includes('404') || err.message.includes('not found')) {
+                            clearInterval(pollInterval);
                             if (targetCard) {
                                 targetCard.style.transition = 'opacity 0.3s ease';
                                 targetCard.style.opacity = '0';
@@ -295,7 +331,8 @@
                             showToast(`Сервер "${name}" удалён`, 'success');
                         }
                     }
-                }, 2000);
+                }, 3000);
+
             } catch (error) {
                 if (targetCard) {
                     targetCard.classList.remove('deleting');

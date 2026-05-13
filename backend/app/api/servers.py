@@ -165,6 +165,15 @@ def run_ansible_and_update(server_id: int, public_ip: str, template: str):
     finally:
         new_db.close()
 
+@router.get("/all", response_model=list[ServerResponse])
+@router.get("/all/")
+def get_all_user_servers(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Все серверы пользователя (включая удалённые)"""
+    servers = db.query(Server).filter(Server.user_id == current_user.id).all()
+    return servers
 
 @router.delete("/{server_id}")
 def delete_server(
@@ -305,11 +314,53 @@ def reboot_server(
         return {"message": f"Server {server.name} rebooting"}
     raise HTTPException(500, "Failed to reboot server")
 
-@router.get("/all", response_model=list[ServerResponse])
-def get_all_user_servers(
+@router.get("/{server_id}/metrics")
+@router.get("/{server_id}/metrics/")
+async def get_server_metrics(
+    server_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Все серверы пользователя (включая удалённые)"""
-    servers = db.query(Server).filter(Server.user_id == current_user.id).all()
-    return servers
+    """Получает метрики сервера (CPU, RAM, Disk)"""
+    import paramiko
+    import json
+    
+    server = db.query(Server).filter(
+        Server.id == server_id,
+        Server.user_id == current_user.id
+    ).first()
+    
+    if not server:
+        raise HTTPException(status_code=404, detail="Server not found")
+    
+    if not server.public_ip:
+        return {"error": "Server has no public IP", "status": server.status}
+    
+    if server.status != "running":
+        return {"error": "Server is not running", "status": server.status}
+    
+    try:
+        private_key_path = os.path.expanduser("~/.ssh/yandex_cloud")
+        private_key = paramiko.RSAKey.from_private_key_file(private_key_path)
+        
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        ssh.connect(server.public_ip, username="ubuntu", pkey=private_key, timeout=10)
+        
+        stdin, stdout, stderr = ssh.exec_command("python3 /tmp/get_metrics.py")
+        output = stdout.read().decode()
+        error = stderr.read().decode()
+        ssh.close()
+        
+        if error:
+            return {"error": error}
+        
+        metrics = json.loads(output)
+        return metrics
+        
+    except paramiko.AuthenticationException:
+        return {"error": "SSH authentication failed"}
+    except paramiko.SSHException as e:
+        return {"error": f"SSH connection error: {str(e)}"}
+    except Exception as e:
+        return {"error": str(e)}

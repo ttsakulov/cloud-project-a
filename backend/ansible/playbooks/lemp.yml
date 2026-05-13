@@ -15,7 +15,24 @@
       apt:
         update_cache: yes
         cache_valid_time: 3600
-    
+
+    # Установка psutil для сбора метрик
+    - name: Install pip if not present
+      apt:
+        name: python3-pip
+        state: present
+
+    - name: Install psutil
+      pip:
+        name: psutil
+        state: present
+
+    - name: Copy metrics script
+      copy:
+        src: get_metrics.py
+        dest: /tmp/get_metrics.py
+        mode: '0755'
+
     # 2. Install Nginx
     - name: Install Nginx
       apt:

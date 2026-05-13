@@ -1,13 +1,18 @@
 <!DOCTYPE html>
 <html lang="ru">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cloud A | Детали сервера</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
+
 <body>
     <script>
         // Проверка авторизации
@@ -61,7 +66,8 @@
                     <div class="detail-item">
                         <label>IP адрес</label>
                         <p id="server-ip"></p>
-                        <a id="server-link" href="#" target="_blank" class="link-icon"><i class="fas fa-external-link-alt"></i> Открыть</a>
+                        <a id="server-link" href="#" target="_blank" class="link-icon"><i
+                                class="fas fa-external-link-alt"></i> Открыть</a>
                     </div>
                     <div class="detail-item">
                         <label>Создан</label>
@@ -74,9 +80,85 @@
                 <h2><i class="fas fa-terminal"></i> SSH Доступ</h2>
                 <div class="copy-wrapper">
                     <code id="ssh-command"></code>
-                    <button onclick="copyToClipboard('ssh-command')" class="btn-icon"><i class="fas fa-copy"></i></button>
+                    <button onclick="copyToClipboard('ssh-command')" class="btn-icon"><i
+                            class="fas fa-copy"></i></button>
                 </div>
-                <p class="hint"><i class="fas fa-key"></i> Используйте ваш <code>~/.ssh/id_rsa</code> (приватный ключ)</p>
+                <p class="hint"><i class="fas fa-key"></i> Используйте ваш <code>~/.ssh/id_rsa</code> (приватный ключ)
+                </p>
+            </div>
+
+            <!-- Дашборд метрик -->
+            <div class="detail-card">
+                <h2><i class="fas fa-chart-line"></i> Метрики сервера</h2>
+
+                <div id="metrics-loading" class="text-center py-4">
+                    <div class="spinner"></div>
+                    <p class="text-gray-500 mt-2">Загрузка метрик...</p>
+                </div>
+
+                <div id="metrics-content" style="display: none;">
+                    <div class="metrics-grid">
+                        <!-- CPU карточка -->
+                        <div class="metric-card">
+                            <div class="metric-title">
+                                <i class="fas fa-microchip"></i> CPU
+                                <span id="cpu-percent" class="metric-value">0%</span>
+                            </div>
+                            <canvas id="cpu-chart" width="300" height="150"></canvas>
+                            <div class="metric-details">
+                                <div>Load: <span id="load-avg">0.00, 0.00, 0.00</span></div>
+                                <div>Ядер: <span id="cpu-count">0</span></div>
+                            </div>
+                        </div>
+
+                        <!-- RAM карточка -->
+                        <div class="metric-card">
+                            <div class="metric-title">
+                                <i class="fas fa-memory"></i> RAM
+                                <span id="ram-percent" class="metric-value">0%</span>
+                            </div>
+                            <div class="progress-bar-wrapper">
+                                <div id="ram-bar" class="progress-bar-fill" style="width: 0%;"></div>
+                            </div>
+                            <div class="metric-details">
+                                <span>Использовано: <span id="ram-used">0</span> ГБ / <span id="ram-total">0</span>
+                                    ГБ</span>
+                            </div>
+                        </div>
+
+                        <!-- Disk карточка -->
+                        <div class="metric-card">
+                            <div class="metric-title">
+                                <i class="fas fa-hdd"></i> Disk
+                                <span id="disk-percent" class="metric-value">0%</span>
+                            </div>
+                            <div class="progress-bar-wrapper">
+                                <div id="disk-bar" class="progress-bar-fill" style="width: 0%;"></div>
+                            </div>
+                            <div class="metric-details">
+                                <span>Использовано: <span id="disk-used">0</span> ГБ / <span id="disk-total">0</span>
+                                    ГБ</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Дополнительные метрики -->
+                    <div class="metrics-footer">
+                        <div class="metric-item">
+                            <i class="fas fa-network-wired"></i> Сеть: ↓ <span id="net-recv">0</span> MB | ↑ <span
+                                id="net-sent">0</span> MB
+                        </div>
+                        <div class="metric-item">
+                            <i class="fas fa-clock"></i> Uptime: <span id="uptime">0д 0ч 0м</span>
+                        </div>
+                        <div class="metric-item">
+                            <i class="fas fa-tasks"></i> Процессов: <span id="processes">0</span>
+                        </div>
+                        <div class="metric-item">
+                            <i class="fas fa-sync-alt"></i> Обновление: каждые 10 сек
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div class="detail-card" id="control-card">
@@ -201,17 +283,38 @@
             const originalHTML = controlCard.innerHTML;
 
             controlCard.innerHTML = `
-                <div class="deleting-state">
-                    <i class="fas fa-spinner fa-spin"></i>
-                    <p>${action === 'stop' ? 'Остановка' : action === 'start' ? 'Запуск' : 'Перезагрузка'} сервера...</p>
-                    <span>Это может занять до минуты</span>
-                </div>
-            `;
+        <div class="deleting-state">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p>${action === 'stop' ? 'Остановка' : action === 'start' ? 'Запуск' : 'Перезагрузка'} сервера...</p>
+            <span>Это может занять до минуты</span>
+        </div>
+    `;
 
             try {
                 await apiRequest(`/servers/${serverId}/${action}`, 'POST');
-                showToast(`Сервер ${actionText}ен`, 'success');
-                setTimeout(() => loadServer(), 2000);
+
+                const pollInterval = setInterval(async () => {
+                    try {
+                        const server = await apiRequest(`/servers/${serverId}`);
+
+                        if (action === 'stop' && server.status === 'stopped') {
+                            clearInterval(pollInterval);
+                            showToast(`Сервер остановлен`, 'success');
+                            loadServer();
+                        } else if (action === 'start' && server.status === 'running') {
+                            clearInterval(pollInterval);
+                            showToast(`Сервер запущен`, 'success');
+                            loadServer();
+                        } else if (action === 'reboot' && server.status === 'running') {
+                            clearInterval(pollInterval);
+                            showToast(`Сервер перезагружен`, 'success');
+                            loadServer();
+                        }
+                    } catch (err) {
+                        console.log('Waiting for status update...', err);
+                    }
+                }, 3000);
+
             } catch (error) {
                 controlCard.innerHTML = originalHTML;
                 showToast('Ошибка: ' + error.message, 'error');
@@ -234,17 +337,19 @@
 
             try {
                 await apiRequest(`/servers/${serverId}`, 'DELETE');
-                
-                const checkInterval = setInterval(async () => {
+
+                const pollInterval = setInterval(async () => {
                     try {
                         await apiRequest(`/servers/${serverId}`);
+                        console.log('Waiting for deletion...');
                     } catch (err) {
-                        if (err.message === 'Not authenticated' || err.message.includes('404')) {
-                            clearInterval(checkInterval);
+                        if (err.message.includes('404') || err.message.includes('not found')) {
+                            clearInterval(pollInterval);
                             window.location.href = 'index.html';
                         }
                     }
-                }, 2000);
+                }, 3000);
+
             } catch (error) {
                 dangerCard.innerHTML = originalHTML;
                 showToast('Ошибка: ' + error.message, 'error');
@@ -265,7 +370,118 @@
             setTimeout(() => toast.remove(), 3000);
         }
 
+        let metricsChart = null;
+        let metricsInterval = null;
+
+        async function loadMetrics() {
+            const loading = document.getElementById('metrics-loading');
+            const content = document.getElementById('metrics-content');
+
+            if (!loading) return;
+
+            try {
+                const data = await apiRequest(`/servers/${serverId}/metrics`);
+
+                if (data.error) {
+                    loading.innerHTML = `<p class="text-red-500 text-center">⚠️ ${data.error}</p>`;
+                    return;
+                }
+
+                loading.style.display = 'none';
+                content.style.display = 'block';
+
+                // CPU
+                const cpuPercent = data.cpu?.percent || 0;
+                document.getElementById('cpu-percent').textContent = `${Math.round(cpuPercent)}%`;
+                document.getElementById('cpu-count').textContent = data.cpu?.count || 0;
+                document.getElementById('load-avg').textContent = `${data.cpu?.load_avg_1min || 0}, ${data.cpu?.load_avg_5min || 0}, ${data.cpu?.load_avg_15min || 0}`;
+
+                // RAM
+                const ramPercent = data.memory?.percent || 0;
+                document.getElementById('ram-percent').textContent = `${Math.round(ramPercent)}%`;
+                document.getElementById('ram-bar').style.width = `${ramPercent}%`;
+                document.getElementById('ram-bar').style.backgroundColor = getProgressColor(ramPercent);
+                document.getElementById('ram-used').textContent = data.memory?.used_gb || 0;
+                document.getElementById('ram-total').textContent = data.memory?.total_gb || 0;
+
+                // Disk
+                const diskPercent = data.disk?.percent || 0;
+                document.getElementById('disk-percent').textContent = `${Math.round(diskPercent)}%`;
+                document.getElementById('disk-bar').style.width = `${diskPercent}%`;
+                document.getElementById('disk-bar').style.backgroundColor = getProgressColor(diskPercent);
+                document.getElementById('disk-used').textContent = data.disk?.used_gb || 0;
+                document.getElementById('disk-total').textContent = data.disk?.total_gb || 0;
+
+                // Network
+                document.getElementById('net-recv').textContent = data.network?.recv_mb || 0;
+                document.getElementById('net-sent').textContent = data.network?.sent_mb || 0;
+
+                // Uptime
+                const uptime = data.uptime || {};
+                document.getElementById('uptime').textContent = `${uptime.days || 0}д ${uptime.hours || 0}ч ${uptime.minutes || 0}м`;
+
+                // Processes
+                document.getElementById('processes').textContent = data.processes || 0;
+
+                // Обновляем график CPU
+                if (metricsChart) {
+                    metricsChart.data.datasets[0].data.push(cpuPercent);
+                    if (metricsChart.data.datasets[0].data.length > 20) {
+                        metricsChart.data.datasets[0].data.shift();
+                    }
+                    metricsChart.update();
+                } else {
+                    const ctx = document.getElementById('cpu-chart').getContext('2d');
+                    metricsChart = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: Array(20).fill(''),
+                            datasets: [{
+                                label: 'CPU %',
+                                data: Array(19).fill(0).concat([cpuPercent]),
+                                borderColor: '#2563eb',
+                                backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                                fill: true,
+                                tension: 0.3,
+                                pointRadius: 2
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: true,
+                            plugins: {
+                                legend: { display: false }
+                            },
+                            scales: {
+                                y: { min: 0, max: 100, grid: { color: '#e2e8f0' } },
+                                x: { grid: { display: false } }
+                            }
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading metrics:', error);
+                loading.innerHTML = '<p class="text-red-500 text-center">Ошибка загрузки метрик</p>';
+            }
+        }
+
+        function getProgressColor(percent) {
+            if (percent < 70) return '#10b981';  // зелёный
+            if (percent < 90) return '#f59e0b';  // оранжевый
+            return '#ef4444';  // красный
+        }
+
         loadServer();
+        
+        // Запускаем загрузку метрик через 1 секунду после загрузки страницы
+        setTimeout(() => {
+            if (document.getElementById('metrics-loading')) {
+                loadMetrics();
+                if (metricsInterval) clearInterval(metricsInterval);
+                metricsInterval = setInterval(loadMetrics, 10000);
+            }
+        }, 1000);
     </script>
 </body>
+
 </html>
