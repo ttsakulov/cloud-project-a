@@ -304,3 +304,12 @@ def reboot_server(
     if tf_service.reboot_server(server.name):
         return {"message": f"Server {server.name} rebooting"}
     raise HTTPException(500, "Failed to reboot server")
+
+@router.get("/all", response_model=list[ServerResponse])
+def get_all_user_servers(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Все серверы пользователя (включая удалённые)"""
+    servers = db.query(Server).filter(Server.user_id == current_user.id).all()
+    return servers

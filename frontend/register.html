@@ -6,6 +6,7 @@
     <title>Cloud A | Регистрация</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="js/api.js"></script>
 </head>
 <body class="bg-gray-50 min-h-screen flex items-center justify-center">
     <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-8 w-full max-w-md">
@@ -39,46 +40,20 @@
     </div>
 
     <script>
-        const API_URL = 'http://localhost:8000/api';
-        
-        document.getElementById('register-form').addEventListener('submit', async function(event) {
-            event.preventDefault();
-            
-            console.log('Форма отправлена');
-            
+        document.getElementById('register-form').onsubmit = async (e) => {
+            e.preventDefault();
             const email = document.getElementById('email').value;
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
             
-            console.log('Email:', email);
-            console.log('Username:', username);
-            
             try {
-                const response = await fetch(`${API_URL}/auth/register`, {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ email, username, password })
-                });
-                
-                console.log('Response status:', response.status);
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    console.log('Success:', data);
-                    alert('Регистрация успешна! Теперь войдите.');
-                    window.location.href = 'login.html';
-                } else {
-                    const error = await response.json();
-                    console.error('Error:', error);
-                    alert('Ошибка: ' + (error.detail || 'Неизвестная ошибка'));
-                }
+                const result = await apiRequest('/auth/register', 'POST', { email, username, password });
+                alert('Регистрация успешна! Теперь войдите.');
+                window.location.href = 'login.html';
             } catch (error) {
-                console.error('Fetch error:', error);
-                alert('Ошибка подключения к серверу. Убедитесь, что API запущен на порту 8000');
+                alert('Ошибка: ' + error.message);
             }
-        });
+        };
     </script>
 </body>
 </html>

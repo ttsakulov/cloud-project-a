@@ -168,13 +168,7 @@
 
             try {
                 const result = await apiRequest('/servers', 'POST', data);
-                if (result && result.id) {
-                    window.location.href = `index.html?new_server=${result.id}`;
-                } else {
-                    alert('Ошибка при создании сервера');
-                    btn.disabled = false;
-                    btn.innerHTML = '<i class="fas fa-play"></i> Создать сервер';
-                }
+                window.location.href = `index.html?new_server=${result.id}`;
             } catch (error) {
                 alert('Ошибка: ' + error.message);
                 btn.disabled = false;

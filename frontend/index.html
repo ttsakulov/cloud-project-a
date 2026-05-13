@@ -20,6 +20,7 @@
             window.location.href = 'login.html';
         }
     </script>
+
     <nav class="navbar">
         <div class="container">
             <div class="nav-brand">
@@ -28,9 +29,13 @@
                 </div>
                 <span class="logo-text">Cloud A</span>
             </div>
-            <a href="create.html" class="btn-primary">
-                <i class="fas fa-plus"></i> Создать сервер
-            </a>
+            <div class="nav-menu">
+                <a href="index.html" class="nav-link active">Серверы</a>
+                <a href="profile.html" class="nav-link">Профиль</a>
+                <button onclick="logout()" class="btn-logout">
+                    <i class="fas fa-sign-out-alt"></i> Выйти
+                </button>
+            </div>
         </div>
     </nav>
 
@@ -59,16 +64,13 @@
 
     <script src="js/api.js"></script>
     <script>
-        let refreshInterval = null;
-
         async function loadServers() {
             const loading = document.getElementById('loading');
             const grid = document.getElementById('servers-grid');
             const noServers = document.getElementById('no-servers');
 
             try {
-                const response = await fetch(`${API_URL}/servers`);
-                const servers = await response.json();
+                const servers = await apiRequest('/servers');
 
                 loading.classList.add('hidden');
 
@@ -154,7 +156,6 @@
             } catch (error) {
                 loading.classList.add('hidden');
                 console.error(error);
-                showToast('Ошибка загрузки серверов', 'error');
             }
         }
 
@@ -164,8 +165,7 @@
                 'provisioning': { class: 'status-provisioning', icon: '🔄', text: 'Настройка' },
                 'creating': { class: 'status-creating', icon: '⚡', text: 'Создание' },
                 'stopped': { class: 'status-stopped', icon: '⏹️', text: 'Остановлен' },
-                'error': { class: 'status-error', icon: '🔴', text: 'Ошибка' },
-                'deleted': { class: 'status-deleted', icon: '⚫', text: 'Удалён' }
+                'error': { class: 'status-error', icon: '🔴', text: 'Ошибка' }
             };
             return configs[status] || configs['error'];
         }
@@ -190,8 +190,7 @@
         async function startProgressPolling(serverId) {
             const pollInterval = setInterval(async () => {
                 try {
-                    const response = await fetch(`${API_URL}/servers/${serverId}`);
-                    const server = await response.json();
+                    const server = await apiRequest(`/servers/${serverId}`);
 
                     if (server.status === 'running') {
                         clearInterval(pollInterval);
@@ -233,31 +232,18 @@
             if (targetCard) {
                 targetCard.classList.add('deleting');
                 targetCard.innerHTML = `
-            <div class="deleting-state">
-                <i class="fas fa-spinner fa-spin"></i>
-                <p>${action === 'stop' ? 'Остановка' : action === 'start' ? 'Запуск' : 'Перезагрузка'} сервера...</p>
-                <span>Это может занять до минуты</span>
-            </div>
-        `;
+                    <div class="deleting-state">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <p>${action === 'stop' ? 'Остановка' : action === 'start' ? 'Запуск' : 'Перезагрузка'} сервера...</p>
+                        <span>Это может занять до минуты</span>
+                    </div>
+                `;
             }
 
             try {
-                const response = await fetch(`${API_URL}/servers/${id}/${action}`, { method: 'POST' });
-                if (response.ok) {
-                    if (action === 'reboot') {
-                        showToast('Сервер перезагружается', 'success');
-                        setTimeout(() => loadServers(), 3000);
-                    } else {
-                        showToast(`Сервер ${actionText}ен`, 'success');
-                        setTimeout(() => loadServers(), 2000);
-                    }
-                } else {
-                    if (targetCard) {
-                        targetCard.classList.remove('deleting');
-                        loadServers();
-                    }
-                    showToast('Ошибка при выполнении операции', 'error');
-                }
+                await apiRequest(`/servers/${id}/${action}`, 'POST');
+                showToast(`Сервер ${actionText}ен`, 'success');
+                setTimeout(() => loadServers(), 2000);
             } catch (error) {
                 if (targetCard) {
                     targetCard.classList.remove('deleting');
@@ -291,36 +277,13 @@
             }
 
             try {
-                const response = await fetch(`${API_URL}/servers/${id}`, { method: 'DELETE' });
-                if (response.ok) {
-                    const checkInterval = setInterval(async () => {
-                        try {
-                            const checkRes = await fetch(`${API_URL}/servers/${id}`);
-                            if (checkRes.status === 404) {
-                                clearInterval(checkInterval);
-                                if (targetCard) {
-                                    targetCard.style.transition = 'opacity 0.3s ease';
-                                    targetCard.style.opacity = '0';
-                                    setTimeout(() => loadServers(), 300);
-                                } else {
-                                    loadServers();
-                                }
-                                showToast(`Сервер "${name}" удалён`, 'success');
-                            } else {
-                                const server = await checkRes.json();
-                                if (server.status === 'deleted') {
-                                    clearInterval(checkInterval);
-                                    if (targetCard) {
-                                        targetCard.style.transition = 'opacity 0.3s ease';
-                                        targetCard.style.opacity = '0';
-                                        setTimeout(() => loadServers(), 300);
-                                    } else {
-                                        loadServers();
-                                    }
-                                    showToast(`Сервер "${name}" удалён`, 'success');
-                                }
-                            }
-                        } catch (err) {
+                await apiRequest(`/servers/${id}`, 'DELETE');
+
+                const checkInterval = setInterval(async () => {
+                    try {
+                        await apiRequest(`/servers/${id}`);
+                    } catch (err) {
+                        if (err.message === 'Not authenticated' || err.message.includes('404')) {
                             clearInterval(checkInterval);
                             if (targetCard) {
                                 targetCard.style.transition = 'opacity 0.3s ease';
@@ -331,14 +294,8 @@
                             }
                             showToast(`Сервер "${name}" удалён`, 'success');
                         }
-                    }, 2000);
-                } else {
-                    if (targetCard) {
-                        targetCard.classList.remove('deleting');
-                        loadServers();
                     }
-                    showToast('Ошибка при удалении', 'error');
-                }
+                }, 2000);
             } catch (error) {
                 if (targetCard) {
                     targetCard.classList.remove('deleting');
@@ -369,6 +326,11 @@
 
         loadServers();
         setInterval(loadServers, 15000);
+
+        function logout() {
+            localStorage.removeItem('token');
+            window.location.href = 'login.html';
+        }
     </script>
 </body>
 

@@ -1,4 +1,5 @@
 from pydantic import BaseModel, EmailStr
+from datetime import datetime
 
 class UserCreate(BaseModel):
     email: EmailStr
@@ -19,3 +20,6 @@ class UserResponse(BaseModel):
     username: str
     is_active: bool
     created_at: datetime
+
+# Принудительно перестраиваем модель
+UserResponse.model_rebuild()

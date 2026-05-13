@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cloud A | Профиль</title>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+    <script>
+        const token = localStorage.getItem('token');
+        if (!token) {
+            window.location.href = 'login.html';
+        }
+    </script>
+
+    <nav class="navbar">
+        <div class="container">
+            <div class="nav-brand">
+                <div class="logo-icon">
+                    <i class="fas fa-cloud"></i>
+                </div>
+                <a href="index.html" class="logo-text">Cloud A</a>
+            </div>
+            <div class="nav-menu">
+                <a href="index.html" class="nav-link">Серверы</a>
+                <a href="profile.html" class="nav-link active">Профиль</a>
+                <button onclick="logout()" class="btn-logout">
+                    <i class="fas fa-sign-out-alt"></i> Выйти
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="container">
+        <div class="page-header">
+            <h1>Профиль пользователя</h1>
+            <p>Управление вашим аккаунтом</p>
+        </div>
+
+        <div id="loading" class="loading-state">
+            <div class="spinner"></div>
+            <p>Загрузка...</p>
+        </div>
+
+        <div id="profile-content" class="hidden">
+            <div class="detail-card">
+                <h2><i class="fas fa-user-circle"></i> Информация об аккаунте</h2>
+                <div class="profile-info">
+                    <div class="info-row">
+                        <span class="info-label">ID пользователя</span>
+                        <span id="user-id" class="info-value"></span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Имя пользователя</span>
+                        <span id="user-username" class="info-value"></span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Email</span>
+                        <span id="user-email" class="info-value"></span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Аккаунт создан</span>
+                        <span id="user-created" class="info-value"></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="detail-card">
+                <h2><i class="fas fa-history"></i> История серверов</h2>
+                <div id="servers-history" class="servers-history-list">
+                    <p class="text-gray-500">Загрузка...</p>
+                </div>
+            </div>
+
+            <div class="danger-card">
+                <h2><i class="fas fa-exclamation-triangle"></i> Удаление аккаунта</h2>
+                <p>Удаление аккаунта необратимо. Все ваши серверы будут удалены, данные потеряны.</p>
+                <button onclick="deleteAccount()" class="btn-danger">
+                    <i class="fas fa-trash-alt"></i> Удалить аккаунт
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <script src="js/api.js"></script>
+    <script>
+        let currentUser = null;
+
+        async function loadProfile() {
+            try {
+                const user = await apiRequest('/auth/me');
+                currentUser = user;
+
+                document.getElementById('user-id').textContent = user.id;
+                document.getElementById('user-username').textContent = user.username;
+                document.getElementById('user-email').textContent = user.email;
+                document.getElementById('user-created').textContent = new Date(user.created_at).toLocaleString();
+
+                await loadServersHistory();
+
+                document.getElementById('loading').classList.add('hidden');
+                document.getElementById('profile-content').classList.remove('hidden');
+            } catch (error) {
+                document.getElementById('loading').innerHTML = '<p class="text-error">Ошибка загрузки профиля</p>';
+            }
+        }
+
+        async function loadServersHistory() {
+            try {
+                const servers = await apiRequest('/servers/all');
+                const historyDiv = document.getElementById('servers-history');
+
+                if (!servers || servers.length === 0) {
+                    historyDiv.innerHTML = '<p class="text-gray-500">У вас пока нет серверов</p>';
+                    return;
+                }
+
+                historyDiv.innerHTML = `
+                    <table class="history-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Имя</th>
+                                <th>Шаблон</th>
+                                <th>IP адрес</th>
+                                <th>Статус</th>
+                                <th>Создан</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${servers.map(server => `
+                                <tr>
+                                    <td>${server.id}</td>
+                                    <td>${escapeHtml(server.name)}</td>
+                                    <td>${server.template}</td>
+                                    <td>${server.public_ip || '—'}</td>
+                                    <td><span class="status-badge ${getStatusClass(server.status)}">${server.status}</span></td>
+                                    <td>${new Date(server.created_at).toLocaleDateString()}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+            } catch (error) {
+                console.error('Error loading history:', error);
+            }
+        }
+
+        function getStatusClass(status) {
+            const classes = {
+                'running': 'status-running',
+                'provisioning': 'status-provisioning',
+                'creating': 'status-creating',
+                'stopped': 'status-stopped',
+                'deleted': 'status-deleted',
+                'error': 'status-error'
+            };
+            return classes[status] || 'status-error';
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        async function deleteAccount() {
+            if (!confirm('Вы уверены, что хотите удалить аккаунт? Это действие необратимо. Все ваши серверы будут удалены.')) {
+                return;
+            }
+
+            if (!confirm('ПОСЛЕДНЕЕ ПРЕДУПРЕЖДЕНИЕ! Восстановить аккаунт будет невозможно. Удалить аккаунт?')) {
+                return;
+            }
+
+            try {
+                await apiRequest('/auth/me', 'DELETE');
+                localStorage.removeItem('token');
+                alert('Аккаунт удалён');
+                window.location.href = 'register.html';
+            } catch (error) {
+                alert('Ошибка при удалении: ' + error.message);
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('token');
+            window.location.href = 'login.html';
+        }
+
+        loadProfile();
+
+        function logout() {
+            localStorage.removeItem('token');
+            window.location.href = 'login.html';
+        }
+    </script>
+</body>
+
+</html>

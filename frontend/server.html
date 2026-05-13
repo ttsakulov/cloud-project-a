@@ -9,6 +9,14 @@
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+    <script>
+        // Проверка авторизации
+        const token = localStorage.getItem('token');
+        if (!token) {
+            window.location.href = 'login.html';
+        }
+    </script>
+
     <nav class="navbar">
         <div class="container">
             <div class="nav-brand">
@@ -71,7 +79,6 @@
                 <p class="hint"><i class="fas fa-key"></i> Используйте ваш <code>~/.ssh/id_rsa</code> (приватный ключ)</p>
             </div>
 
-            <!-- Управление сервером -->
             <div class="detail-card" id="control-card">
                 <h2><i class="fas fa-cog"></i> Управление сервером</h2>
                 <div class="control-buttons">
@@ -105,8 +112,7 @@
 
         async function loadServer() {
             try {
-                const res = await fetch(`${API_URL}/servers/${serverId}`);
-                serverData = await res.json();
+                serverData = await apiRequest(`/servers/${serverId}`);
 
                 document.getElementById('loading').classList.add('hidden');
                 document.getElementById('content').classList.remove('hidden');
@@ -121,7 +127,6 @@
                 statusSpan.className = `status-badge ${statusConfig.class}`;
                 statusSpan.innerHTML = `${statusConfig.icon} ${statusConfig.text}`;
 
-                // Показываем/скрываем кнопки в зависимости от статуса
                 const stopBtn = document.getElementById('stop-btn');
                 const startBtn = document.getElementById('start-btn');
                 const rebootBtn = document.getElementById('reboot-btn');
@@ -204,19 +209,9 @@
             `;
 
             try {
-                const response = await fetch(`${API_URL}/servers/${serverId}/${action}`, { method: 'POST' });
-                if (response.ok) {
-                    if (action === 'reboot') {
-                        showToast('Сервер перезагружается', 'success');
-                        setTimeout(() => loadServer(), 3000);
-                    } else {
-                        showToast(`Сервер ${actionText}ен`, 'success');
-                        setTimeout(() => loadServer(), 2000);
-                    }
-                } else {
-                    controlCard.innerHTML = originalHTML;
-                    showToast('Ошибка при выполнении операции', 'error');
-                }
+                await apiRequest(`/servers/${serverId}/${action}`, 'POST');
+                showToast(`Сервер ${actionText}ен`, 'success');
+                setTimeout(() => loadServer(), 2000);
             } catch (error) {
                 controlCard.innerHTML = originalHTML;
                 showToast('Ошибка: ' + error.message, 'error');
@@ -238,30 +233,18 @@
             `;
 
             try {
-                const response = await fetch(`${API_URL}/servers/${serverId}`, { method: 'DELETE' });
-                if (response.ok) {
-                    const checkInterval = setInterval(async () => {
-                        try {
-                            const checkRes = await fetch(`${API_URL}/servers/${serverId}`);
-                            if (checkRes.status === 404) {
-                                clearInterval(checkInterval);
-                                window.location.href = 'index.html';
-                            } else {
-                                const server = await checkRes.json();
-                                if (server.status === 'deleted') {
-                                    clearInterval(checkInterval);
-                                    window.location.href = 'index.html';
-                                }
-                            }
-                        } catch (err) {
+                await apiRequest(`/servers/${serverId}`, 'DELETE');
+                
+                const checkInterval = setInterval(async () => {
+                    try {
+                        await apiRequest(`/servers/${serverId}`);
+                    } catch (err) {
+                        if (err.message === 'Not authenticated' || err.message.includes('404')) {
                             clearInterval(checkInterval);
                             window.location.href = 'index.html';
                         }
-                    }, 2000);
-                } else {
-                    dangerCard.innerHTML = originalHTML;
-                    showToast('Ошибка при удалении', 'error');
-                }
+                    }
+                }, 2000);
             } catch (error) {
                 dangerCard.innerHTML = originalHTML;
                 showToast('Ошибка: ' + error.message, 'error');
