@@ -33,7 +33,7 @@ def get_env_var(name: str) -> str:
     return value
 
 
-@router.post("/", response_model=ServerResponse)
+@router.post("", response_model=ServerResponse)
 async def create_server(
     server_data: ServerCreate,
     background_tasks: BackgroundTasks,
@@ -98,7 +98,7 @@ async def create_server(
         raise HTTPException(status_code=500, detail=f"Failed to create VM: {str(e)}")
 
 
-@router.get("/", response_model=list[ServerResponse])
+@router.get("", response_model=list[ServerResponse])
 def list_servers(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -123,6 +123,28 @@ def get_template(name: str):
         raise HTTPException(404, "Template not found")
     return template
 
+@router.get("/all")
+@router.get("/all/")
+def get_all_user_servers(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Все серверы пользователя (включая удалённые)"""
+    servers = db.query(Server).filter(Server.user_id == current_user.id).all()
+    
+    # Ручная сериализация
+    result = []
+    for s in servers:
+        result.append({
+            "id": s.id,
+            "name": s.name,
+            "template": s.template,
+            "public_ip": s.public_ip,
+            "status": s.status,
+            "created_at": s.created_at.isoformat() if s.created_at else None,
+            "deleted_at": s.deleted_at.isoformat() if s.deleted_at else None
+        })
+    return result
 
 @router.get("/{server_id}", response_model=ServerResponse)
 def get_server(
@@ -164,16 +186,6 @@ def run_ansible_and_update(server_id: int, public_ip: str, template: str):
             new_db.commit()
     finally:
         new_db.close()
-
-@router.get("/all", response_model=list[ServerResponse])
-@router.get("/all/")
-def get_all_user_servers(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """Все серверы пользователя (включая удалённые)"""
-    servers = db.query(Server).filter(Server.user_id == current_user.id).all()
-    return servers
 
 @router.delete("/{server_id}")
 def delete_server(
@@ -314,8 +326,57 @@ def reboot_server(
         return {"message": f"Server {server.name} rebooting"}
     raise HTTPException(500, "Failed to reboot server")
 
+@router.get("/{server_id}/real-status")
+async def get_real_server_status(
+    server_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Получает реальный статус сервера из Yandex Cloud"""
+    import subprocess
+    import json
+    
+    server = db.query(Server).filter(
+        Server.id == server_id,
+        Server.user_id == current_user.id
+    ).first()
+    
+    if not server or not server.name:
+        raise HTTPException(404, "Server not found")
+    
+    try:
+        result = subprocess.run(
+            ["yc", "compute", "instance", "get", "--name", server.name, "--format", "json"],
+            capture_output=True, text=True
+        )
+        
+        if result.returncode != 0:
+            return {"status": "not_found", "yc_status": "DELETED"}
+        
+        data = json.loads(result.stdout)
+        yc_status = data.get("status", "UNKNOWN")
+        
+        # Маппинг статусов YC
+        status_map = {
+            "RUNNING": "running",
+            "STOPPED": "stopped",
+            "STOPPING": "stopped",
+            "STARTING": "starting",
+            "RESTARTING": "restarting",
+            "CRASHED": "error"
+        }
+        
+        return {
+            "status": status_map.get(yc_status, yc_status.lower()),
+            "yc_status": yc_status,
+            "name": server.name,
+            "public_ip": server.public_ip
+        }
+        
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
 @router.get("/{server_id}/metrics")
-@router.get("/{server_id}/metrics/")
 async def get_server_metrics(
     server_id: int,
     db: Session = Depends(get_db),

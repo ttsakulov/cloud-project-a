@@ -249,31 +249,31 @@
             }
 
             try {
-                // Отправляем запрос на управление
                 await apiRequest(`/servers/${id}/${action}`, 'POST');
 
-                // Опрашиваем статус каждые 3 секунды
                 const pollInterval = setInterval(async () => {
                     try {
-                        const server = await apiRequest(`/servers/${id}`);
+                        const realStatus = await apiRequest(`/servers/${id}/real-status`);
 
-                        // Если статус изменился на нужный — анимация завершается
-                        if (action === 'stop' && server.status === 'stopped') {
+                        if (action === 'stop' && realStatus.status === 'stopped') {
                             clearInterval(pollInterval);
                             showToast(`Сервер остановлен`, 'success');
                             loadServers();
-                        } else if (action === 'start' && server.status === 'running') {
+                        } else if (action === 'start' && realStatus.status === 'running') {
                             clearInterval(pollInterval);
                             showToast(`Сервер запущен`, 'success');
                             loadServers();
-                        } else if (action === 'reboot' && server.status === 'running') {
+                        } else if (action === 'reboot' && realStatus.status === 'running') {
                             clearInterval(pollInterval);
                             showToast(`Сервер перезагружен`, 'success');
                             loadServers();
+                        } else if (realStatus.status === 'not_found') {
+                            clearInterval(pollInterval);
+                            showToast(`Сервер не найден`, 'error');
+                            loadServers();
                         }
                     } catch (err) {
-                        // Если сервер недоступен — продолжаем ждать
-                        console.log('Waiting for status update...', err);
+                        console.log('Waiting for real status update...', err);
                     }
                 }, 3000);
 
@@ -314,11 +314,19 @@
 
                 const pollInterval = setInterval(async () => {
                     try {
-                        await apiRequest(`/servers/${id}`);
-                        // Сервер всё ещё существует — продолжаем ждать
-                        console.log('Waiting for deletion...');
+                        const realStatus = await apiRequest(`/servers/${id}/real-status`);
+                        if (realStatus.status === 'not_found') {
+                            clearInterval(pollInterval);
+                            if (targetCard) {
+                                targetCard.style.transition = 'opacity 0.3s ease';
+                                targetCard.style.opacity = '0';
+                                setTimeout(() => loadServers(), 300);
+                            } else {
+                                loadServers();
+                            }
+                            showToast(`Сервер "${name}" удалён`, 'success');
+                        }
                     } catch (err) {
-                        // Если 404 или "Server not found" — сервер удалён
                         if (err.message.includes('404') || err.message.includes('not found')) {
                             clearInterval(pollInterval);
                             if (targetCard) {

@@ -8,7 +8,6 @@ function getHeaders() {
     };
 }
 
-// Добавляем слеш в конце, если его нет
 function normalizeEndpoint(endpoint) {
     return endpoint;
 }

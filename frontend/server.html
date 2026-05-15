@@ -295,23 +295,27 @@
 
                 const pollInterval = setInterval(async () => {
                     try {
-                        const server = await apiRequest(`/servers/${serverId}`);
+                        const realStatus = await apiRequest(`/servers/${serverId}/real-status`);
 
-                        if (action === 'stop' && server.status === 'stopped') {
+                        if (action === 'stop' && realStatus.status === 'stopped') {
                             clearInterval(pollInterval);
                             showToast(`Сервер остановлен`, 'success');
                             loadServer();
-                        } else if (action === 'start' && server.status === 'running') {
+                        } else if (action === 'start' && realStatus.status === 'running') {
                             clearInterval(pollInterval);
                             showToast(`Сервер запущен`, 'success');
                             loadServer();
-                        } else if (action === 'reboot' && server.status === 'running') {
+                        } else if (action === 'reboot' && realStatus.status === 'running') {
                             clearInterval(pollInterval);
                             showToast(`Сервер перезагружен`, 'success');
                             loadServer();
+                        } else if (realStatus.status === 'not_found') {
+                            clearInterval(pollInterval);
+                            showToast(`Сервер не найден`, 'error');
+                            window.location.href = 'index.html';
                         }
                     } catch (err) {
-                        console.log('Waiting for status update...', err);
+                        console.log('Waiting for real status update...', err);
                     }
                 }, 3000);
 
@@ -328,20 +332,23 @@
             const originalHTML = dangerCard.innerHTML;
 
             dangerCard.innerHTML = `
-                <div class="deleting-state">
-                    <i class="fas fa-spinner fa-spin"></i>
-                    <p>Удаление сервера...</p>
-                    <span>Это может занять до минуты</span>
-                </div>
-            `;
+        <div class="deleting-state">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p>Удаление сервера...</p>
+            <span>Это может занять до минуты</span>
+        </div>
+    `;
 
             try {
                 await apiRequest(`/servers/${serverId}`, 'DELETE');
 
                 const pollInterval = setInterval(async () => {
                     try {
-                        await apiRequest(`/servers/${serverId}`);
-                        console.log('Waiting for deletion...');
+                        const realStatus = await apiRequest(`/servers/${serverId}/real-status`);
+                        if (realStatus.status === 'not_found') {
+                            clearInterval(pollInterval);
+                            window.location.href = 'index.html';
+                        }
                     } catch (err) {
                         if (err.message.includes('404') || err.message.includes('not found')) {
                             clearInterval(pollInterval);
@@ -472,7 +479,7 @@
         }
 
         loadServer();
-        
+
         // Запускаем загрузку метрик через 1 секунду после загрузки страницы
         setTimeout(() => {
             if (document.getElementById('metrics-loading')) {
