@@ -10,12 +10,7 @@ function getHeaders() {
 
 // Добавляем слеш в конце, если его нет
 function normalizeEndpoint(endpoint) {
-    if (endpoint === '') return '/';
-    // Если в конце уже есть слеш или есть ? (параметры), не трогаем
-    if (endpoint.endsWith('/') || endpoint.includes('?')) {
-        return endpoint;
-    }
-    return endpoint + '/';
+    return endpoint;
 }
 
 async function apiRequest(endpoint, method = 'GET', data = null) {
